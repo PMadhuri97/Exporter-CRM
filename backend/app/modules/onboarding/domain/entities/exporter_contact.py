@@ -153,7 +153,10 @@ class ExporterContact(AnerModel):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    #: **Encrypted** (AES-SIV, ``contact_phone.PHONE_PURPOSE``), holding the canonical
+    #: spelling from ``normalise_phone`` rather than the characters anybody typed.
+    #: Deterministic so the column can still be compared; 512 to fit the ciphertext.
+    phone: Mapped[str | None] = mapped_column(String(512), nullable=True)
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_primary_contact: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

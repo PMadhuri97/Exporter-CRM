@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions, people
+from app.modules.onboarding.domain.contact_phone import seal_phone
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ContactStatus,
@@ -135,7 +136,7 @@ class ExporterContactActivityService:
             name=name,
             role=role,
             email=email,
-            phone=phone,
+            phone=seal_phone(phone),
             department=department,
             is_primary_contact=is_primary,
             is_contact=is_contact,
@@ -204,6 +205,11 @@ class ExporterContactActivityService:
             raise ExporterContactNotFoundError(customer_id, contact_id)
 
         fields = dict(changes)
+        # Sealed before the loop below sets it: `changes` carries what the caller sent,
+        # and the column holds a ciphertext of the canonical number, never the string
+        # that was typed. Absent means "leave it alone"; present and null clears it.
+        if "phone" in fields:
+            fields["phone"] = seal_phone(fields["phone"])
         promote = fields.pop("is_primary", None)
         number_sent = "identification_number" in fields
         number = fields.pop("identification_number", None)
