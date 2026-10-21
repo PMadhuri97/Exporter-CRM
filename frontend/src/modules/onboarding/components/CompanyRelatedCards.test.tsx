@@ -12,7 +12,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UserRole } from '@/lib/api/types';
-import { useCanRevealIdentifiers } from '@/platform/access';
+import { useCanRevealIdentifiersOnce } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
 import { setExporterContactStatus, updateExporterContact } from '../api';
@@ -22,7 +22,7 @@ import { CompanyRelatedCards } from './CompanyRelatedCards';
 
 vi.mock('@/platform/access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/access')>()),
-  useCanRevealIdentifiers: vi.fn(),
+  useCanRevealIdentifiersOnce: vi.fn(),
 }));
 vi.mock('@/platform/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/auth')>()),
@@ -82,7 +82,7 @@ const JANE_MASKED: ExporterContact = { ...JANE, email: 'j•••@example.com',
 function as(role: UserRole) {
   // Compliance holds `exporters:view_full_tax_id` by default, and the eye reads the
   // permission rather than the role, so it follows whatever each test signs in as.
-  vi.mocked(useCanRevealIdentifiers).mockReturnValue(role === 'COMPLIANCE');
+  vi.mocked(useCanRevealIdentifiersOnce).mockReturnValue(role === 'COMPLIANCE');
   vi.mocked(useCurrentUser).mockReturnValue({ role } as ReturnType<typeof useCurrentUser>);
 }
 

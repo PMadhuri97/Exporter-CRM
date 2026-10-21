@@ -28,7 +28,7 @@ import {
   Skeleton,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { useCanRevealIdentifiers } from '@/platform/access';
+import { useCanRevealIdentifiersOnce } from '@/platform/access';
 
 import { countryLabel } from '../countries';
 import { useAddExporterContact, useCompanyPeople, useUpdateExporterContact } from '../hooks';
@@ -299,12 +299,12 @@ function EditPersonForm({
   onDone: () => void;
 }) {
   const mutation = useUpdateExporterContact(customerId);
-  const mayRevealNow = useCanRevealIdentifiers();
-  // Fixed when the form opens, not read live. The permission arrives from the server,
-  // so it can flip from false to true while the form is open: the fields would have
-  // been initialised empty and then saved as a deliberate clear, wiping a real email
-  // or phone. One answer for the life of the form keeps the two consistent.
-  const [mayReveal] = useState(mayRevealNow);
+  // Fixed once the server has answered, then kept for the life of the form. Read live
+  // it could flip from false to true mid-edit, leaving the fields initialised empty
+  // and saving that as a deliberate clear; frozen on the *first* answer instead, a
+  // form opened before the permissions landed would mask an email from somebody
+  // entitled to read it until they closed it.
+  const mayReveal = useCanRevealIdentifiersOnce();
   const masked = (value: string | null | undefined) => (mayReveal ? (value ?? '') : '');
   const [form, setForm] = useState<PersonForm>({
     name: person.name,

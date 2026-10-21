@@ -75,6 +75,47 @@ async def test_the_same_contact_twice_is_refused(client: AsyncClient):
     assert len(await _contacts(client, token, customer_id)) == 1
 
 
+async def test_a_short_number_typed_twice_is_refused(client: AsyncClient):
+    """An extension is compared whole rather than by its ending — and both sides have
+    to lose a leading `0` for that to work.
+
+    Stripped on the new number only, `012345` did not match the `012345` already
+    stored: one side had become `12345` and the other had not.
+    """
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+    await _added(client, token, customer_id, phone="012345")
+
+    refused = await _add(client, token, customer_id, phone="012345")
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error_code"] == "EXPORTER_CONTACT_ALREADY_EXISTS"
+    assert len(await _contacts(client, token, customer_id)) == 1
+
+
+async def test_a_short_number_still_matches_across_the_trunk_zero(client: AsyncClient):
+    """Both spellings of one extension, now that the `0` comes off both sides."""
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+    await _added(client, token, customer_id, phone="012345")
+
+    refused = await _add(client, token, customer_id, phone="12345")
+
+    assert refused.status_code == 409, refused.text
+
+
+async def test_two_different_short_numbers_are_both_recorded(client: AsyncClient):
+    """The fix must not collapse unrelated extensions into one."""
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+    await _added(client, token, customer_id, phone="012345")
+
+    second = await _add(client, token, customer_id, phone="054321")
+
+    assert second.status_code == 201, second.text
+    assert len(await _contacts(client, token, customer_id)) == 2
+
+
 async def test_the_same_email_alone_is_refused(client: AsyncClient):
     token = await token_with_role(client, UserRole.COMPLIANCE)
     customer_id = await make_company()

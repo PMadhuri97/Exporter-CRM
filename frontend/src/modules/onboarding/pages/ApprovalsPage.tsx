@@ -117,13 +117,24 @@ const EMPTY: Record<Tab, string> = {
 };
 
 /**
- * Each outcome as the verb a sentence can use. Lower-casing the status gave "You
+ * Each outcome as the verb for "You ___ it". Lower-casing the status gave "You
  * withdrawn Clear": `WITHDRAWN` is a participle, not a past tense.
  */
 const PAST_TENSE: Record<string, string> = {
   APPROVED: 'approved',
   REJECTED: 'rejected',
   WITHDRAWN: 'withdrew',
+};
+
+/**
+ * The same outcomes as the form for "___ by somebody", which is the passive and not
+ * always the same word. Two of the three are, which is why one map looked like enough
+ * until a withdrawal read "withdrew by A Maker".
+ */
+const PARTICIPLE: Record<string, string> = {
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  WITHDRAWN: 'withdrawn',
 };
 
 /**
@@ -152,10 +163,16 @@ function reviewedDetail(
   const ended = proposal.resolved_at ? formatDateTime(proposal.resolved_at) : null;
 
   if (proposal.proposed_by === viewerId) {
+    // A proposal only its own proposer may withdraw, so this is usually them: saying
+    // "withdrawn by you" after "You proposed" names the same person twice in one line.
+    const byThemselves = proposal.resolved_by === viewerId;
+    const participle = PARTICIPLE[proposal.status] ?? proposal.status.toLowerCase();
     const outcome =
       proposal.status === 'OPEN'
         ? 'awaiting approval'
-        : `${PAST_TENSE[proposal.status] ?? proposal.status.toLowerCase()} by ${actorLabel(proposal.resolved_by_name, proposal.resolved_by)}, ${ended}`;
+        : byThemselves
+          ? `you ${PAST_TENSE[proposal.status] ?? participle} it, ${ended}`
+          : `${participle} by ${actorLabel(proposal.resolved_by_name, proposal.resolved_by)}, ${ended}`;
     return `You proposed ${move} · ${outcome}`;
   }
   // Their own resolution of somebody else's proposal. Each date sits beside the thing

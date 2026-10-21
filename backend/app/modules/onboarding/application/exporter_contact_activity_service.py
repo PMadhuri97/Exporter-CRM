@@ -329,6 +329,22 @@ class ExporterContactActivityService:
         if contact.status == status.value:
             return contact
 
+        if status is ContactStatus.ACTIVE:
+            # Coming back is a write of these details as much as typing them in is.
+            # `others_sharing_details` only looks at active contacts — so that a
+            # replacement is not warned about the person it replaces — which leaves a
+            # way round the rule: A leaves, B is added with A's email, A is reactivated,
+            # and the company has two active contacts on one address. Checked under the
+            # same company lock the other two writers take, so two simultaneous
+            # reactivations cannot both pass.
+            await self._contacts.lock_company(customer_id)
+            await self._refuse_a_duplicate(
+                customer_id,
+                email=contact.email,
+                phone=contact.phone,
+                exclude_id=contact_id,
+            )
+
         previous = contact.status
         was_primary = contact.is_primary_contact
         contact.status = status.value

@@ -155,9 +155,24 @@ class BackgroundCheckProposalRepository(AppendOnlyRepository[BackgroundCheckProp
                 )
             )
         if since is not None:
-            # On the proposal's own date, not the resolution's, so a row keeps its place
-            # in the list when it is approved rather than jumping to the top.
-            conditions.append(BackgroundCheckProposal.created_at >= since)
+            # Either date inside the window keeps the row. On the proposal's date alone,
+            # work done *yesterday* fell out of a 90-day list because the proposal it
+            # resolved was made 100 days ago — the officer's own most recent decision,
+            # missing from their own record.
+            #
+            # The *ordering* still follows the proposal's date, so a row keeps its place
+            # when it is approved rather than jumping to the top. Only what is included
+            # changed, not where it sits.
+            #
+            # An unresolved proposal has no resolution date, so the second test is NULL
+            # for it and the first decides alone: an old proposal nobody has answered
+            # still drops out of the window, which is what `days` is for.
+            conditions.append(
+                or_(
+                    BackgroundCheckProposal.created_at >= since,
+                    BackgroundCheckProposalResolution.created_at >= since,
+                )
+            )
 
         newest_first = status != STATUS_OPEN
         order = (

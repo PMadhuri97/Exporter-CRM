@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 import { apiRequest } from '@/lib/api/client';
 import type { components } from '@/lib/api/schema';
@@ -90,4 +91,33 @@ export function useHasPermission(permission: AssignmentPermission): boolean {
  */
 export function useCanRevealIdentifiers(): boolean {
   return useHasPermission('exporters:view_full_tax_id');
+}
+
+/**
+ * The same answer, fixed once the server has given it — for a form that has to keep
+ * one answer for its whole life.
+ *
+ * An edit form reads the permission once, at open: the fields are initialised from it,
+ * and were it read live a change from false to true mid-edit would leave the email and
+ * phone boxes empty and save that emptiness as a deliberate clear.
+ *
+ * Freezing the *first* answer has its own fault, which is what this fixes: the
+ * permissions arrive from the server, so a form opened before they land freezes
+ * `false` and keeps it, showing a masked email to somebody entitled to read it for as
+ * long as the form stays open. Here nothing is frozen until the answer is real, so
+ * late-loading permissions are waited for rather than guessed at.
+ *
+ * Returns `false` while the answer is still unknown — masked until told otherwise, in
+ * keeping with every other reveal decision.
+ */
+export function useCanRevealIdentifiersOnce(): boolean {
+  const { isLoading, granted } = usePermissions();
+  const answer = granted.has('exporters:view_full_tax_id');
+  const [settled, setSettled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && settled === null) setSettled(answer);
+  }, [isLoading, settled, answer]);
+
+  return settled ?? false;
 }

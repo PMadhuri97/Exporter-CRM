@@ -311,6 +311,44 @@ describe('Compliance work — Reviewed', () => {
     expect(screen.queryByText(/You withdrawn/)).not.toBeInTheDocument();
   });
 
+  it('reads an officer withdrawing their own proposal without naming them twice', async () => {
+    // The ordinary case — a proposal is the proposer's to withdraw — and the one the
+    // test above does not cover, because there a lead withdrew somebody else's.
+    // "withdrew by" is the active verb in a passive sentence; it read
+    // "You proposed Clear · withdrew by Me".
+    await open([
+      reviewed({
+        proposed_by: 'me',
+        proposed_by_name: 'Me',
+        status: 'WITHDRAWN',
+        resolved_by: 'me',
+        resolved_by_name: 'Me',
+        resolved_at: '2026-10-04T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/You proposed .* · you withdrew it/)).toBeInTheDocument();
+    expect(screen.queryByText(/withdrew by/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/withdrawn by Me/)).not.toBeInTheDocument();
+  });
+
+  it('names the other officer when somebody else resolved the proposal', async () => {
+    // The passive form still has to be the participle.
+    await open([
+      reviewed({
+        proposed_by: 'me',
+        proposed_by_name: 'Me',
+        status: 'WITHDRAWN',
+        resolved_by: 'a-lead',
+        resolved_by_name: 'A Lead',
+        resolved_at: '2026-10-04T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/withdrawn by A Lead/)).toBeInTheDocument();
+    expect(screen.queryByText(/withdrew by/)).not.toBeInTheDocument();
+  });
+
   it('draws one row per company, however many proposals it has', async () => {
     // Two rows shared a company id: both highlighted together, and React warned.
     await open([

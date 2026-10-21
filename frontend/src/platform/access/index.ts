@@ -6,6 +6,7 @@ export { NoWorkspace, NoWorkspaceFrame } from './NoWorkspace';
 export { useCan } from './useCan';
 export {
   useCanRevealIdentifiers,
+  useCanRevealIdentifiersOnce,
   useHasPermission,
   type AssignmentPermission,
 } from './usePermissions';

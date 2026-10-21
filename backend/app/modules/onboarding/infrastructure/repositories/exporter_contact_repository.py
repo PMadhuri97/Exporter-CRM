@@ -97,14 +97,15 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
             matches.append(func.lower(ExporterContact.email) == email.strip().lower())
         digits = "".join(character for character in (phone or "") if character.isdigit())
         digits = digits[1:] if digits.startswith("0") else digits
+        # A single leading `0` is a trunk prefix, not part of the number, so it comes
+        # off both sides: off `digits` above, and off the column here. Defined once for
+        # both branches below — stripped on one side only, `012345` typed twice did not
+        # match itself, because the new number had lost its `0` and the stored one had
+        # not.
+        stored = func.regexp_replace(
+            func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g"), "^0", ""
+        )
         if len(digits) >= SIGNIFICANT_PHONE_DIGITS:
-            # A single leading `0` is a trunk prefix, not part of the number, and it
-            # is dropped before the endings are compared: otherwise `09876543210` and
-            # `919876543210` — one line, dialled two ways — end differently and the
-            # duplicate goes in.
-            stored = func.regexp_replace(
-                func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g"), "^0", ""
-            )
             # One number is the same line as another when either ends with the other:
             # `919876543210`, `09876543210` and `9876543210` are one line, because a
             # country code or a trunk `0` is exactly what varies between two entries.
@@ -126,9 +127,7 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         elif digits:
             # Too short for its ending to mean anything — an extension, or half a
             # number. Matched whole, so it still catches the same thing typed twice.
-            matches.append(
-                func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g") == digits
-            )
+            matches.append(stored == digits)
         if not matches:
             return []
 

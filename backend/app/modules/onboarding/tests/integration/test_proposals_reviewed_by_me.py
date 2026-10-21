@@ -31,10 +31,14 @@ from app.modules.onboarding.tests.integration._compliance_support import (
     MAKER,
     ready_to_clear,
 )
+from app.modules.onboarding.tests.integration._verification_support import pg
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
+
+#: Refuses UPDATE and DELETE on the proposal table (migration 0026).
+APPEND_ONLY = "trg_background_check_proposal_append_only"
 
 #: A compliance officer who takes no part in the proposals below.
 THIRD = ComplianceUser(user_id="reviewed-third-officer", role=UserRole.COMPLIANCE)
@@ -55,10 +59,10 @@ async def _reject(who: ComplianceUser, company_id: uuid.UUID, proposal_id: uuid.
         )
 
 
-async def _reviewed(who: str, **kwargs) -> tuple[list, int]:
+async def _reviewed(who: str, *, limit: int = 50, **kwargs) -> tuple[list, int]:
     async with db_services.AsyncSessionLocal() as db:
         return await BackgroundCheckProposalRepository(db).list_across_companies(
-            status=None, reviewed_by=who, limit=50, **kwargs
+            status=None, reviewed_by=who, limit=limit, **kwargs
         )
 
 
@@ -132,6 +136,53 @@ async def test_the_window_bounds_how_far_back_it_reaches():
 
     assert proposal_id in [row[0].id for row in recent]
     assert proposal_id not in [row[0].id for row in ancient]
+
+
+async def test_work_done_recently_on_an_old_proposal_is_still_mine():
+    """The window asks "what have I done lately", so it has to follow the decision as
+    well as the proposal.
+
+    On the proposal's date alone, an officer who approved something yesterday did not
+    see it in their own 90-day record, because the proposal had been sitting since
+    before the window opened. The row is backdated here past the window and then
+    resolved, which is exactly that shape.
+    """
+    company_id, proposal_id = await _company_with_open_proposal(MAKER)
+    # The table is append-only, so the age is staged with the trigger off for this one
+    # transaction — the convention `test_buyer_checks` uses for the frozen buyer row.
+    with pg() as cur:
+        cur.execute("BEGIN")
+        cur.execute(f"ALTER TABLE onboarding.background_check_proposal DISABLE TRIGGER {APPEND_ONLY}")
+        cur.execute(
+            "UPDATE onboarding.background_check_proposal "
+            "SET created_at = now() - interval '100 days' WHERE id = %s",
+            (str(proposal_id),),
+        )
+        cur.execute(f"ALTER TABLE onboarding.background_check_proposal ENABLE TRIGGER {APPEND_ONLY}")
+        cur.execute("COMMIT")
+
+    # Scoped to this one proposal. The listing is newest-first and this row is now
+    # the oldest of hundreds this database has accumulated, so any page would miss it
+    # for a reason that has nothing to do with the window being tested.
+    window = datetime.now(UTC) - timedelta(days=90)
+    only_this = [proposal_id]
+    before, _ = await _reviewed(MAKER.user_id, since=window, proposal_ids=only_this)
+    assert proposal_id not in [row[0].id for row in before], (
+        "an old proposal nobody has answered belongs outside the window"
+    )
+
+    await _reject(CHECKER, company_id, proposal_id)
+
+    after, _ = await _reviewed(MAKER.user_id, since=window, proposal_ids=only_this)
+    assert proposal_id in [row[0].id for row in after], (
+        "the proposer's record should show what became of it"
+    )
+    checker_rows, _ = await _reviewed(
+        CHECKER.user_id, since=window, proposal_ids=only_this
+    )
+    assert proposal_id in [row[0].id for row in checker_rows], (
+        "and the officer who decided it yesterday should see their own decision"
+    )
 
 
 async def test_the_listing_carries_the_company_name():
