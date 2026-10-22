@@ -40,7 +40,7 @@ replacement.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import structlog
 from sqlalchemy import select
@@ -225,6 +225,7 @@ class FollowUpService:
         due_after: datetime | None = None,
         include_check_backs: bool = True,
         check_backs_due_only: bool = False,
+        check_backs_due_within_days: int = 0,
         limit: int = 50,
         offset: int = 0,
     ) -> FollowUpListView:
@@ -249,6 +250,12 @@ class FollowUpService:
         before today — so an "Overdue" view does not list a company parked until next
         quarter beside the work that is late. "Today" is the same UTC date
         ``is_overdue`` is judged against, from the same single ``now``.
+
+        ``check_backs_due_within_days`` moves that edge forward, so a caller can ask
+        for the ones falling due shortly as well as those already due. It needs
+        ``check_backs_due_only=True`` to mean anything: without a window there is
+        nothing to widen. Rows past today still read as overdue — the look-ahead
+        changes which companies are listed, never how late any of them is.
         """
         now = _now()
         rows = await self._completions.list_follow_ups(
@@ -283,7 +290,15 @@ class FollowUpService:
             # a paged table, so the first `limit` of them, with a true
             # `check_backs_total` beside them, is the useful answer. A caller that
             # needs to page them can ask per company.
-            due_on_or_before = now.date() if check_backs_due_only else None
+            # The window's far edge. `check_backs_due_within_days` moves it forward:
+            # Home looks a few days ahead so a check-back does not appear only on the
+            # morning it falls due, while the Overdue view leaves it at today, where a
+            # future date has no business being listed beside work that is late.
+            due_on_or_before = (
+                now.date() + timedelta(days=max(0, check_backs_due_within_days))
+                if check_backs_due_only
+                else None
+            )
             profiles = await self._completions.list_check_backs(
                 customer_id=customer_id,
                 due_on_or_before=due_on_or_before,

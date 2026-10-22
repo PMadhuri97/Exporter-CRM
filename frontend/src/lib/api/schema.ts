@@ -851,6 +851,8 @@ export interface paths {
         /**
          * Add a contact, director or beneficial owner to a company
          * @description A person with roles: `is_contact` (the default), `is_director`, `is_ubo`. Only the name and a role are required; a DIN needs the director role, an ownership share and control type the beneficial-owner role. The identification number is stored encrypted. Adding a director or beneficial owner writes a `contact` history row. Setting is_primary=true demotes any existing primary contact for this customer in the same transaction — never two primaries at once; only a contact can be primary.
+         *
+         *     A contact this company can already reach at the same email address or phone number is refused (409), not recorded a second time.
          */
         post: operations["add_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts_post"];
         delete?: never;
@@ -2722,6 +2724,30 @@ export interface paths {
          * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which keeps only what the caller may approve: not their own, not one whose review they hold, not a company they are RM of, and a HIGH or CRITICAL CLEAR only for a senior approver. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier), what this caller may do with it and, while open, when it is due and how many people could approve it. COMPLIANCE only: they are the ones who approve.
          */
         get: operations["list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/proposals/reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Background-check proposals this user reviewed
+         * @description What the signed-in compliance officer has had a hand in, newest first: the proposals they made, whatever became of them, and the ones they approved or rejected for somebody else. Their own work only — there is no parameter for reading another officer's.
+         *
+         *     A proposal they made and nobody has resolved yet is included, marked open: it is work they did, and leaving it out would hide the one they are waiting on.
+         *
+         *     `days` bounds how far back it reaches. On `compliance:decide` rather than `compliance:approve`, so an officer who proposes but may not approve can still see their own record.
+         */
+        get: operations["list_proposals_i_reviewed_api_v1_onboarding_background_check_proposals_reviewed_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11686,7 +11712,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Another contact was made primary for this company at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            /** @description This company already has a contact with the same email address or the same phone number — either alone is enough (EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -11748,7 +11774,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Another contact was made primary for this company at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            /** @description This company already has a contact with the same email address or the same phone number — either alone is enough (EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15266,6 +15292,8 @@ export interface operations {
                 include_check_backs?: boolean;
                 /** @description Only the check-backs that are due — on or before today (UTC). For an overdue view, so a company parked until next quarter is not listed beside work that is late. `check_backs_total` counts the same set. */
                 check_backs_due_only?: boolean;
+                /** @description Widen `check_backs_due_only` to take in the ones falling due within this many days as well, so a check-back can be seen coming rather than only on the morning it is due. Ignored unless `check_backs_due_only` is true. It changes which companies are listed, never whether one reads as overdue. */
+                check_backs_due_within_days?: number;
                 limit?: number;
                 offset?: number;
             };
@@ -17204,6 +17232,54 @@ export interface operations {
                 content?: never;
             };
             /** @description `compliance:approve` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_i_reviewed_api_v1_onboarding_background_check_proposals_reviewed_get: {
+        parameters: {
+            query?: {
+                /** @description How many days back to reach. */
+                days?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `compliance:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -48,6 +48,7 @@ from app.modules.onboarding.domain.entities.exporter_contact import ExporterCont
 from app.modules.onboarding.exceptions import (
     ActivityDueInPastError,
     ContactNotActiveError,
+    ExporterContactAlreadyExistsError,
     ExporterContactNotFoundError,
     ExporterContactPrimaryConflictError,
     ExporterProfileNotFoundError,
@@ -91,6 +92,45 @@ class ExporterContactActivityService:
 
     # ── Contacts ──────────────────────────────────────────────────────────
 
+    async def _refuse_a_duplicate(
+        self,
+        customer_id: uuid.UUID,
+        *,
+        email: str | None,
+        phone: str | None,
+        exclude_id: uuid.UUID | None = None,
+    ) -> None:
+        """Refuse a contact this company can already reach the same way.
+
+        Either field is enough: an email address already on the company, or a phone
+        number already on it, and the contact is not written. A second row holds
+        nothing the first does not.
+
+        Decided for this CRM, and worth knowing what it also refuses: one person listed
+        twice under two roles shares an email, and an office switchboard is shared by
+        several people. Where one of those is real, the second contact goes in without
+        the shared field, or the first is edited.
+
+        Checked here rather than in the route, so every caller is held to it, and
+        before anything is written, so a refusal leaves nothing behind.
+        """
+        matches = await self._contacts.others_sharing_details(
+            customer_id, email=email, phone=phone, exclude_id=exclude_id
+        )
+        if not matches:
+            return
+
+        wanted_email = (email or "").strip().lower()
+        other = matches[0]
+        # Which field matched, so the form can say which line to change. The email is
+        # the more telling of the two when both do.
+        matched_email = bool(wanted_email) and (other.email or "").strip().lower() == wanted_email
+        raise ExporterContactAlreadyExistsError(
+            contact_id=other.id,
+            name=other.name,
+            field="email" if matched_email else "phone",
+        )
+
     async def add_contact(
         self,
         customer_id: uuid.UUID,
@@ -128,6 +168,11 @@ class ExporterContactActivityService:
         contact on the way past.
         """
         await self._require_company(customer_id)
+        # Locked before the check and held to the commit: two simultaneous submits
+        # would otherwise both read "no duplicate" and both write.
+        await self._contacts.lock_company(customer_id)
+        await self._refuse_a_duplicate(customer_id, email=email, phone=phone)
+
         fields = dict(details or {})
         number = fields.pop("identification_number", None)
         contact = ExporterContact(
@@ -216,6 +261,18 @@ class ExporterContactActivityService:
         if not contact.is_contact and promote is None:
             contact.is_primary_contact = False
 
+        # On the values the edit leaves behind, not the ones it sent: changing only the
+        # phone onto a contact that already has this one's email is the same duplicate
+        # as sending both. Itself excluded — a contact never duplicates itself.
+        if {"email", "phone"} & set(fields):
+            await self._contacts.lock_company(customer_id)
+            await self._refuse_a_duplicate(
+                customer_id,
+                email=contact.email,
+                phone=contact.phone,
+                exclude_id=contact_id,
+            )
+
         if promote is not None:
             if promote and contact.status != ContactStatus.ACTIVE.value:
                 raise ContactNotActiveError(contact_id, contact.status)
@@ -271,6 +328,22 @@ class ExporterContactActivityService:
             raise ValidationError("A reason is required when a contact is no longer active")
         if contact.status == status.value:
             return contact
+
+        if status is ContactStatus.ACTIVE:
+            # Coming back is a write of these details as much as typing them in is.
+            # `others_sharing_details` only looks at active contacts — so that a
+            # replacement is not warned about the person it replaces — which leaves a
+            # way round the rule: A leaves, B is added with A's email, A is reactivated,
+            # and the company has two active contacts on one address. Checked under the
+            # same company lock the other two writers take, so two simultaneous
+            # reactivations cannot both pass.
+            await self._contacts.lock_company(customer_id)
+            await self._refuse_a_duplicate(
+                customer_id,
+                email=contact.email,
+                phone=contact.phone,
+                exclude_id=contact_id,
+            )
 
         previous = contact.status
         was_primary = contact.is_primary_contact

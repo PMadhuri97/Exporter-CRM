@@ -1,56 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
-import { canReveal, maskIdentifier } from './maskIdentifier';
+import { maskTail } from './maskIdentifier';
 
 const PAN = 'ABCDE1234F';
 
-describe('maskIdentifier', () => {
-  // Decision 12: sales staff see masked tax IDs. This used to be two tests —
-  // masked for a non-owner, unmasked for the assigned relationship manager —
-  // because `canReveal` carried an ownership exception. That exception is gone
-  // on both sides, so ownership is no longer an input and there is one case.
-  it('masks for OPERATIONS, owner or not', () => {
-    expect(maskIdentifier(PAN, { role: 'OPERATIONS' })).toBe(
-      '••••••234F',
-    );
+/**
+ * Who may reveal is no longer answered in this file. It is the server's permission
+ * (`exporters:view_full_tax_id`), read on screen through `useCanRevealIdentifiers`, so
+ * there is no role list here to drift from it — which is what happened when there was.
+ */
+describe('maskTail', () => {
+  it('covers all but the last four characters', () => {
+    expect(maskTail(PAN)).toBe('••••••234F');
   });
 
-  it('never masks for COMPLIANCE', () => {
-    expect(maskIdentifier(PAN, { role: 'COMPLIANCE' })).toBe(
-      PAN,
-    );
+  it('covers a short value completely, leaving no four characters to read', () => {
+    expect(maskTail('ABCD')).toBe('••••');
+    expect(maskTail('AB')).toBe('••');
+    expect(maskTail('A')).toBe('•');
   });
 
-  it('always masks for ADMIN, which runs the system and does not see tax IDs', () => {
-    expect(maskIdentifier(PAN, { role: 'ADMIN' })).toBe('••••••234F');
-  });
-
-  it('always masks for DEVELOPER, even claiming ownership', () => {
-    expect(maskIdentifier(PAN, { role: 'DEVELOPER' })).toBe(
-      '••••••234F',
-    );
-  });
-
-  it('always masks for API_USER', () => {
-    expect(maskIdentifier(PAN, { role: 'API_USER' })).toBe('••••••234F');
-  });
-
-  it('passes through null/undefined unchanged, for any role', () => {
-    expect(maskIdentifier(null, { role: 'OPERATIONS' })).toBeNull();
-    expect(maskIdentifier(undefined, { role: 'COMPLIANCE' })).toBeNull();
-  });
-
-  it('masks a value no longer than the visible suffix entirely', () => {
-    expect(maskIdentifier('AB', { role: 'OPERATIONS' })).toBe('••');
-  });
-});
-
-describe('canReveal', () => {
-  it('matches the role matrix in docs/architecture.md ("Roles and masking")', () => {
-    expect(canReveal('COMPLIANCE')).toBe(true);
-    expect(canReveal('ADMIN')).toBe(false);
-    expect(canReveal('OPERATIONS')).toBe(false);
-    expect(canReveal('DEVELOPER')).toBe(false);
-    expect(canReveal('API_USER')).toBe(false);
+  it('leaves an already-masked value as it found it', () => {
+    // The server masks before the value reaches the browser, and `Identifier` masks
+    // again over the top; masking twice must not shift the bullets or the four
+    // characters that are meant to stay readable.
+    expect(maskTail('••••••234F')).toBe('••••••234F');
   });
 });
