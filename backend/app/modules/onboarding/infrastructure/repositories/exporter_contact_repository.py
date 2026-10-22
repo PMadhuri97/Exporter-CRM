@@ -7,6 +7,8 @@ import uuid
 from sqlalchemy import and_, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.contact_phone import seal_phone
+from app.modules.onboarding.domain.contact_privacy import normalise_email, seal_email
 from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
@@ -22,6 +24,9 @@ _NOT_A_DIGIT = r'[^0-9]'
 #:
 #: Below this an "extension" or half a number would match far too much, so a short
 #: value is compared whole.
+#: What a deterministically sealed value begins with (`field_cipher`).
+_SEALED = "d1."
+
 SIGNIFICANT_PHONE_DIGITS = 7
 
 
@@ -93,41 +98,69 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         has left would put a warning on exactly the entry that replaces them.
         """
         matches = []
-        if email and email.strip():
-            matches.append(func.lower(ExporterContact.email) == email.strip().lower())
-        digits = "".join(character for character in (phone or "") if character.isdigit())
-        digits = digits[1:] if digits.startswith("0") else digits
-        # A single leading `0` is a trunk prefix, not part of the number, so it comes
-        # off both sides: off `digits` above, and off the column here. Defined once for
-        # both branches below — stripped on one side only, `012345` typed twice did not
-        # match itself, because the new number had lost its `0` and the stored one had
-        # not.
-        stored = func.regexp_replace(
-            func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g"), "^0", ""
-        )
-        if len(digits) >= SIGNIFICANT_PHONE_DIGITS:
-            # One number is the same line as another when either ends with the other:
-            # `919876543210`, `09876543210` and `9876543210` are one line, because a
-            # country code or a trunk `0` is exactly what varies between two entries.
-            #
-            # Deliberately *not* "the last eight digits are equal", which this used to
-            # be. That treats `0802 2345678` and `0442 2345678` — two cities, two
-            # lines — as the same number, and refuses the second. Comparing endings
-            # keeps the variants together without ever merging two numbers of the same
-            # length that differ anywhere.
+
+        # Both columns hold a **deterministic seal of a canonical value** now, so the
+        # comparison that used to normalise in SQL happens at write time instead:
+        # `seal_email` lower-cases before sealing, `seal_phone` puts the number in E.164
+        # first, and identical values therefore store identically. One equality finds
+        # them.
+        #
+        # The merge that brought the two halves of this together left the old SQL in
+        # place against the new columns — `lower('d1.dev1.VANA…')` matches no address
+        # and `regexp_replace` over base64 is noise — so every duplicate went
+        # undetected while every test still passed.
+        sealed_email = seal_email(email)
+        if sealed_email is not None:
+            matches.append(ExporterContact.email == sealed_email)
+        sealed_phone = seal_phone(phone)
+        if sealed_phone is not None:
+            matches.append(ExporterContact.phone == sealed_phone)
+
+        # Rows written before the columns were sealed are still plain, and the seal
+        # above cannot find them. They are compared the old way, each guarded so a
+        # ciphertext never reaches the digit-stripping: without that guard a short
+        # extension could match whatever digits happen to sit in somebody's base64.
+        plain_email = normalise_email(email)
+        if plain_email is not None:
             matches.append(
-                or_(
-                    stored.like(f"%{digits}"),
-                    and_(
-                        func.length(stored) >= SIGNIFICANT_PHONE_DIGITS,
-                        literal(digits).like(func.concat("%", stored)),
-                    ),
+                and_(
+                    ExporterContact.email.notlike(f"{_SEALED}%"),
+                    func.lower(ExporterContact.email) == plain_email,
                 )
             )
-        elif digits:
-            # Too short for its ending to mean anything — an extension, or half a
-            # number. Matched whole, so it still catches the same thing typed twice.
-            matches.append(stored == digits)
+
+        digits = "".join(character for character in (phone or "") if character.isdigit())
+        digits = digits[1:] if digits.startswith("0") else digits
+        if digits:
+            # A single leading `0` is a trunk prefix, not part of the number, so it
+            # comes off both sides. Stripped on one side only, `012345` typed twice did
+            # not match itself.
+            stored = func.regexp_replace(
+                func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g"), "^0", ""
+            )
+            unsealed = ExporterContact.phone.notlike(f"{_SEALED}%")
+            if len(digits) >= SIGNIFICANT_PHONE_DIGITS:
+                # One number is the same line as another when either ends with the
+                # other: a country code or a trunk `0` is what varies between entries.
+                # Only for these legacy rows — a sealed column cannot be matched by its
+                # ending, which is why the canonical form is now settled on the way in.
+                matches.append(
+                    and_(
+                        unsealed,
+                        or_(
+                            stored.like(f"%{digits}"),
+                            and_(
+                                func.length(stored) >= SIGNIFICANT_PHONE_DIGITS,
+                                literal(digits).like(func.concat("%", stored)),
+                            ),
+                        ),
+                    )
+                )
+            else:
+                # Too short for its ending to mean anything — an extension, or half a
+                # number. Matched whole.
+                matches.append(and_(unsealed, stored == digits))
+
         if not matches:
             return []
 

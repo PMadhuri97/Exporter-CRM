@@ -38,8 +38,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions, people
-from app.modules.onboarding.domain.contact_phone import seal_phone
+from app.modules.onboarding.domain.contact_phone import open_phone, seal_phone
 from app.modules.onboarding.domain.contact_privacy import (
+    normalise_email,
+    open_email,
     seal_date_of_birth,
     seal_email,
 )
@@ -125,11 +127,17 @@ class ExporterContactActivityService:
         if not matches:
             return
 
-        wanted_email = (email or "").strip().lower()
+        wanted_email = normalise_email(email)
         other = matches[0]
         # Which field matched, so the form can say which line to change. The email is
         # the more telling of the two when both do.
-        matched_email = bool(wanted_email) and (other.email or "").strip().lower() == wanted_email
+        #
+        # Opened before comparing: the column holds a sealed value, and comparing the
+        # stored text to what was typed said "no" every time — so a refusal over an
+        # email address named the phone instead.
+        matched_email = wanted_email is not None and (
+            normalise_email(open_email(other.email)) == wanted_email
+        )
         raise ExporterContactAlreadyExistsError(
             contact_id=other.id,
             name=other.name,
@@ -289,8 +297,11 @@ class ExporterContactActivityService:
             await self._contacts.lock_company(customer_id)
             await self._refuse_a_duplicate(
                 customer_id,
-                email=contact.email,
-                phone=contact.phone,
+                # Opened first: these columns hold sealed values, and the check takes
+                # the details as a person would type them — it seals them itself, and
+                # also compares against rows written before the columns were sealed.
+                email=open_email(contact.email),
+                phone=open_phone(contact.phone),
                 exclude_id=contact_id,
             )
 
@@ -361,8 +372,11 @@ class ExporterContactActivityService:
             await self._contacts.lock_company(customer_id)
             await self._refuse_a_duplicate(
                 customer_id,
-                email=contact.email,
-                phone=contact.phone,
+                # Opened first: these columns hold sealed values, and the check takes
+                # the details as a person would type them — it seals them itself, and
+                # also compares against rows written before the columns were sealed.
+                email=open_email(contact.email),
+                phone=open_phone(contact.phone),
                 exclude_id=contact_id,
             )
 
