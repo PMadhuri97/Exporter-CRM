@@ -92,6 +92,13 @@ class _IdentifierMasking:
             # the whole of it, and `None` already means "not carried" to the reader.
             update["background_check"] = None
 
+        # Also before the early return. A contact is masked from the moment its
+        # response is built (`ExporterContactResponse` fails closed over its sealed
+        # email, phone and date of birth), so leaving it alone does not reveal it — only
+        # its own `masked_for` does, and that masks for everyone else.
+        if "contacts" in fields:
+            update["contacts"] = [contact.masked_for(viewer) for contact in self.contacts]
+
         if can_reveal_identifiers(viewer):
             # A holder of `exporters:view_full_tax_id` — COMPLIANCE by default, not the
             # administrator. Nothing below is withheld from them.
@@ -105,8 +112,6 @@ class _IdentifierMasking:
             # in its own registrar's public index, so it carries the same risk.
             "registration_number": mask_identifier(self.registration_number),
         }
-        if "contacts" in fields:
-            update["contacts"] = [contact.masked() for contact in self.contacts]
         if "gstin_warnings" in fields:
             update["gstin_warnings"] = [w.masked() for w in self.gstin_warnings]
         return self.model_copy(update=update)

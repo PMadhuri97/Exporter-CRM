@@ -42,6 +42,7 @@ from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain.contact_privacy import open_email
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_buyer import BuyerMatchRule, DealBuyer
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
@@ -732,7 +733,8 @@ async def test_the_buyers_email_and_phone_become_contact_records():
                 select(ExporterContact).where(ExporterContact.customer_id == company_id)
             )
         )
-    assert sorted(c.email for c in contacts) == [
+    # The column holds a sealed address (migration 0063); read it the way the app does.
+    assert sorted(open_email(c.email) for c in contacts) == [
         "buying@contact.example",
         "finance@contact.example",
     ]
