@@ -60,6 +60,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationRiskLevel,
     VerificationType,
 )
+from app.modules.onboarding.domain.sealed_columns import SUBJECT_SNAPSHOT
 from app.platform.database.models import AnerModel
 
 SCHEMA = "onboarding"
@@ -249,7 +250,11 @@ class VerificationResult(AnerModel):
     )
     #: BUYER subjects only: ``{deal_buyer_id, deal_id, name, country,
     #: registration_number, tax_id}`` as they were when the check was recorded.
-    subject_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: Its `tax_id` and `registration_number` are **encrypted** (AES-SIV,
+    #: ``sealed_columns.SUBJECT_SNAPSHOT``) when written since 0064, and read back plain.
+    subject_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        SUBJECT_SNAPSHOT, nullable=True
+    )
 
     #: The company this result is about. Set once, then frozen. See the
     #: class docstring.

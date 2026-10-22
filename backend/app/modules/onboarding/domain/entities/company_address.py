@@ -30,6 +30,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
+from app.modules.onboarding.domain.sealed_columns import (
+    ADDRESS_CITY,
+    ADDRESS_LINE1,
+    ADDRESS_LINE2,
+    ADDRESS_POSTAL_CODE,
+)
 from app.platform.database.models import AnerModel
 
 SCHEMA = "onboarding"
@@ -72,11 +78,14 @@ class CompanyAddress(AnerModel):
     )
     #: ``CompanyAddressType``.
     address_type: Mapped[str] = mapped_column(String(24), nullable=False)
-    line1: Mapped[str] = mapped_column(String(255), nullable=False)
-    line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    city: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: `line1`, `line2`, `city` and `postal_code` are **encrypted** (AES-SIV,
+    #: ``sealed_columns``) when written since 0064; older rows are plain. `state` and
+    #: `country` are not: neither identifies anybody.
+    line1: Mapped[str] = mapped_column(ADDRESS_LINE1, nullable=False)
+    line2: Mapped[str | None] = mapped_column(ADDRESS_LINE2, nullable=True)
+    city: Mapped[str] = mapped_column(ADDRESS_CITY, nullable=False)
     state: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(ADDRESS_POSTAL_CODE, nullable=True)
     #: ISO 3166-1 alpha-2.
     country: Mapped[str] = mapped_column(String(2), nullable=False)
     is_default: Mapped[bool] = mapped_column(

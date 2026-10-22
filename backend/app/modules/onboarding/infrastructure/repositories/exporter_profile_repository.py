@@ -122,10 +122,11 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
                 ExporterGstin.gstin.in_(gstins),
                 ExporterGstin.customer_id != customer_id,
             )
-            .order_by(ExporterGstin.gstin, ExporterGstin.customer_id)
         )
         holders: dict[str, list[uuid.UUID]] = {}
-        for gstin, holder in result.all():
+        # Sorted here rather than in SQL: the column holds a ciphertext (0064), and the
+        # same GSTIN can be stored both plain and sealed.
+        for gstin, holder in sorted(result.all(), key=lambda row: (row[0], str(row[1]))):
             holders.setdefault(gstin, []).append(holder)
         return holders
 

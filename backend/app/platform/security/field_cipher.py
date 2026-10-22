@@ -218,6 +218,30 @@ def is_deterministic_ciphertext(value: str | None) -> bool:
     return bool(value) and value.startswith(f"{_DETERMINISTIC_VERSION}.")
 
 
+def deterministic_seals(plaintext: str, *, purpose: str) -> list[str]:
+    """``plaintext`` sealed by :func:`encrypt_deterministic` under **every** configured
+    key, the current one first.
+
+    What an equality lookup compares against. The seal carries its key id, so the same
+    value sealed before and after a key rotation is two different strings; a lookup that
+    tried only the current key would stop finding every row written under the old one
+    until they were all re-sealed.
+    """
+    keys = _keys()
+    seals = []
+    for key_id, key in keys.by_id.items():
+        sealed = AESSIV(_siv_key(key)).encrypt(
+            plaintext.encode("utf-8"), [purpose.encode("utf-8")]
+        )
+        seals.append(
+            f"{_DETERMINISTIC_VERSION}.{key_id}.{base64.b64encode(sealed).decode('ascii')}"
+        )
+    # `by_id` keeps configuration order and the current key is the first configured,
+    # so this is already current-first; stated rather than assumed.
+    seals.sort(key=lambda seal: seal.split(".", 2)[1] != keys.current)
+    return seals
+
+
 __all__ = [
     "DEV_KEY_ENVIRONMENTS",
     "FieldDecryptionError",
@@ -225,6 +249,7 @@ __all__ = [
     "check_field_encryption_keys",
     "decrypt_deterministic",
     "decrypt_field",
+    "deterministic_seals",
     "encrypt_deterministic",
     "encrypt_field",
     "is_deterministic_ciphertext",

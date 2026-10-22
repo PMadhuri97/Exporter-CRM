@@ -40,7 +40,10 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     GstRegistrationStatus,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
-from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.exporter_profile import (
+    ExporterProfile,
+    in_gstin_order,
+)
 from app.modules.onboarding.domain.gst_states import state_code_of, state_name_of
 from app.modules.onboarding.domain.tax_identifiers import (
     check_gstins_match_pan,
@@ -80,10 +83,9 @@ class GstRegistrationService:
         statement = select(ExporterGstin).where(ExporterGstin.customer_id == customer_id)
         if not include_inactive:
             statement = statement.where(ExporterGstin.active.is_(True))
-        rows = await self._db.scalars(
-            statement.order_by(ExporterGstin.created_at, ExporterGstin.gstin)
-        )
-        return list(rows)
+        # The GSTIN tie-break happens in Python: the column holds a ciphertext (0064).
+        rows = await self._db.scalars(statement.order_by(ExporterGstin.created_at))
+        return in_gstin_order(list(rows))
 
     async def other_holders(
         self, gstin: str, *, excluding: uuid.UUID

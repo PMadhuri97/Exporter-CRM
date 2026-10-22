@@ -41,11 +41,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.sealed_columns import HANDOVER_SNAPSHOT
 from app.platform.database.models import AnerModel
 
 if TYPE_CHECKING:
@@ -156,9 +157,11 @@ class Deal(DatabaseGeneratedId, AnerModel):
     #:
     #: A column rather than a live query on purpose: a company's details change
     #: after a handover, and the record of what was handed over must not.
-    handover_snapshot: Mapped[dict | None] = mapped_column(
-        JSONB(none_as_null=True), nullable=True
-    )
+    #:
+    #: The buyer's identifiers and contact details in it are **encrypted** (AES-SIV,
+    #: ``sealed_columns.HANDOVER_SNAPSHOT``) in snapshots taken since 0064, and read
+    #: back plain; earlier snapshots are as they were written.
+    handover_snapshot: Mapped[dict | None] = mapped_column(HANDOVER_SNAPSHOT, nullable=True)
 
     # ── The invoicing branch (migrations 0028 and 0036) ──────────────────────
     #: Which of the seller's GST registrations this deal is invoiced from. ``NULL``

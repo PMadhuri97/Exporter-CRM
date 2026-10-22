@@ -62,7 +62,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
+from app.modules.onboarding.domain.sealed_columns import CONTACT_DIN, DIN_PATTERN
 from app.platform.database.models import AnerModel
+from app.platform.security.sealed_type import SEALED_SQL
 
 SCHEMA = "onboarding"
 
@@ -106,8 +108,11 @@ class ExporterContact(AnerModel):
         CheckConstraint(
             "NOT is_primary_contact OR is_contact", name="ck_exporter_contact_primary_is_contact"
         ),
+        # A sealed DIN cannot be read by a regex, so it passes on its shape (0064);
+        # `SealedString` only seals a DIN that already has the eight digits.
         CheckConstraint(
-            "din IS NULL OR (is_director AND din ~ '^[0-9]{8}$')", name="ck_exporter_contact_din"
+            f"din IS NULL OR (is_director AND (din ~ '{DIN_PATTERN}' OR din ~ '{SEALED_SQL}'))",
+            name="ck_exporter_contact_din",
         ),
         CheckConstraint(
             "ownership_pct IS NULL OR (is_ubo AND ownership_pct >= 0 AND ownership_pct <= 100)",
@@ -193,7 +198,9 @@ class ExporterContact(AnerModel):
     nationality: Mapped[str | None] = mapped_column(String(2), nullable=True)
     residence_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     #: Director Identification Number (India): eight digits. A director's only.
-    din: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    #: **Encrypted** (AES-SIV, ``sealed_columns.CONTACT_DIN``) when written since 0064;
+    #: older rows are plain, and both read back as the number.
+    din: Mapped[str | None] = mapped_column(CONTACT_DIN, nullable=True)
     #: A beneficial owner's only.
     ownership_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     control_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
