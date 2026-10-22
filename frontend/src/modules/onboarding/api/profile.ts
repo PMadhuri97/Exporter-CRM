@@ -59,6 +59,8 @@ function buildQuery(params: ExporterSearchParams): string {
     ['trade_role', params.trade_role],
     ['relationship_manager', params.relationship_manager],
     ['collections_owner', params.collections_owner],
+    ['sort', params.sort],
+    ['order', params.order],
   ];
   for (const [key, value] of entries) if (value) query.set(key, value);
   // Separately, because `false` is a filter ("companies with no open deal") and the

@@ -95,6 +95,11 @@ export const ICON_NAMES = {
   forward: 'arrow_right',
   caretDown: 'chevron_down',
   caretUp: 'chevron_up',
+  // Sorting a list by a column, as a file explorer shows it: the column sorted
+  // ascending or descending, and a column that could be sorted by.
+  sortAscending: 'arrow_up',
+  sortDescending: 'arrow_down',
+  sortable: 'arrow_sort',
   caretLeft: 'chevron_left',
   caretRight: 'chevron_right',
   navCollapse: 'panel_left_contract',

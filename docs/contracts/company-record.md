@@ -13,6 +13,25 @@
 > are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
 > and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
 
+> **Amendment, 19 October 2026 — a contact's first and last name, and the list's order
+> (migrations 0062 and 0064).**
+>
+> * **Contact names.** `POST /exporters/{id}/contacts` takes `first_name` (required,
+>   1–120 characters once trimmed) and `last_name` (optional; `""` or spaces mean none);
+>   `PATCH .../contacts/{contact_id}` may change either, clear `last_name` with `null` or
+>   `""`, but never clear `first_name`. **`name` is no longer accepted**: a body that
+>   sends it is a 422 (the bodies forbid unknown fields). Responses carry `first_name`,
+>   `last_name` and `name`, the full name the database keeps equal to the two
+>   (`database.md`, `exporter_contact`). A buyer contact made from a deal's buyer details
+>   is named after the buyer company, whole, in `first_name`.
+> * **Companies list order.** `GET /exporters` takes `sort` — `created_at` (when the
+>   company was added; **the default**, as before), `updated_at` (when the company record
+>   itself last changed — not its contacts or deals), `name` (ignoring case, unnamed
+>   companies last) or `stage` (Lead, Prospect, Customer) — and `order`, `desc` (the
+>   default) or `asc`; anything else is a 422. Ties fall back to `created_at` then the
+>   company id, so paging the default order neither repeats nor skips a company. Paging
+>   by `updated_at` can, if a company is edited between two pages.
+
 > **Amendment, 9 October 2026 — contacts and customer master data.** Routes are under
 > `/api/v1/onboarding`; history rows are in `history-row.md` §2.
 >

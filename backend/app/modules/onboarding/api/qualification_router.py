@@ -90,7 +90,10 @@ async def create_qualification_criterion(
     db: AsyncSession = Depends(get_db),
 ) -> CriterionResponse:
     criterion = await QualificationService(db).create_criterion(
-        body.key, body.to_definition(), actor_id=str(current_user.id)
+        body.key,
+        body.to_definition(),
+        actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return CriterionResponse.of(criterion)
 
@@ -135,7 +138,10 @@ async def add_qualification_criterion_version(
     db: AsyncSession = Depends(get_db),
 ) -> CriterionResponse:
     criterion = await QualificationService(db).add_version(
-        key, body.to_definition(), actor_id=str(current_user.id)
+        key,
+        body.to_definition(),
+        actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return CriterionResponse.of(criterion)
 

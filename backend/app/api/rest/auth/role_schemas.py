@@ -13,6 +13,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.modules.onboarding.api.schemas.change_reason import ChangeReason
 from app.platform.authentication.models import UserRole
 from app.platform.authorization.catalog import CATALOG, is_valid_permission
 
@@ -70,6 +71,10 @@ class CreateRoleRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str | None = None
     permissions: list[PermissionRef] = Field(default_factory=list)
+    #: Why: a ticket number, then an explanation. Required, and kept in the role's
+    #: history — a role decides what its holders may do, so it changes like any other
+    #: live rule (``domain/change_reason.py``).
+    change_reason: ChangeReason
 
     @field_validator("slug")
     @classmethod
@@ -97,6 +102,9 @@ class UpdateRoleRequest(BaseModel):
     description: str | None = None
     permissions: list[PermissionRef] | None = None
     is_assignable: bool | None = None
+    #: Why: a ticket number, then an explanation. Required, and kept in the role's
+    #: history.
+    change_reason: ChangeReason
 
 
 # ── The catalogue itself ────────────────────────────────────────────────────

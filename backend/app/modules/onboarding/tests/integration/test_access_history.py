@@ -18,6 +18,7 @@ from app.platform.authentication.models import UserRole
 pytestmark = pytest.mark.asyncio
 
 AUTH = "/api/v1/auth"
+ROLE_REASON = "CHG-3001: role change for the access review"
 
 
 async def _admin(client: AsyncClient) -> tuple[str, dict]:
@@ -96,6 +97,7 @@ async def test_a_roles_permission_changes_and_its_deletion_are_recorded(client: 
     created = await client.post(
         f"{AUTH}/roles",
         json={
+            "change_reason": ROLE_REASON,
             "slug": slug,
             "name": "Desk",
             "description": None,
@@ -109,6 +111,7 @@ async def test_a_roles_permission_changes_and_its_deletion_are_recorded(client: 
     updated = await client.patch(
         f"{AUTH}/roles/{role_id}",
         json={
+            "change_reason": ROLE_REASON,
             "name": "Front desk",
             "permissions": [
                 {"module": "exporters", "action": "view"},
@@ -118,7 +121,9 @@ async def test_a_roles_permission_changes_and_its_deletion_are_recorded(client: 
         headers=headers,
     )
     assert updated.status_code == 200, updated.text
-    deleted = await client.delete(f"{AUTH}/roles/{role_id}", headers=headers)
+    deleted = await client.delete(
+        f"{AUTH}/roles/{role_id}", params={"change_reason": ROLE_REASON}, headers=headers
+    )
     assert deleted.status_code == 204, deleted.text
 
     # A deleted role's history stays readable.
@@ -129,6 +134,7 @@ async def test_a_roles_permission_changes_and_its_deletion_are_recorded(client: 
         "access.role_created",
     ]
     assert all(e["actor_id"] == admin_id for e in entries)
+    assert all(e["change_reason"] == ROLE_REASON for e in entries)
     update = {c["field"]: c for c in entries[1]["changes"]}
     assert (update["name"]["from_value"], update["name"]["to_value"]) == ("Desk", "Front desk")
     assert (update["permissions"]["added"], update["permissions"]["removed"]) == (

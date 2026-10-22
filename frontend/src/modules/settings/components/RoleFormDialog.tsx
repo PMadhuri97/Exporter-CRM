@@ -13,6 +13,7 @@ import {
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
+import { ChangeReasonField, changeReasonProblem } from '@/modules/onboarding';
 
 import { useCreateRole, usePermissionCatalog, useUpdateRole } from '../hooks';
 import { permissionKey, type PermissionKey, type Role } from '../types';
@@ -25,7 +26,7 @@ interface RoleFormDialogProps {
   onClose: () => void;
 }
 
-const FIELDS = ['name', 'slug', 'description', 'permissions'] as const;
+const FIELDS = ['name', 'slug', 'description', 'permissions', 'change_reason'] as const;
 
 function slugify(name: string): string {
   return name
@@ -55,6 +56,9 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
   const [selected, setSelected] = useState<Set<PermissionKey>>(
     () => new Set((role?.permissions ?? []).map(permissionKey)),
   );
+  // A role decides what its holders may do, so it changes like any other live rule:
+  // with a ticket number and an explanation, kept in the role's history.
+  const [reason, setReason] = useState('');
 
   const modules = useMemo(() => catalogQuery.data?.modules ?? [], [catalogQuery.data]);
 
@@ -94,6 +98,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
             name: name.trim(),
             description: description.trim() === '' ? null : description.trim(),
             permissions,
+            change_reason: reason.trim(),
           },
         });
         toast.success('Role updated');
@@ -103,6 +108,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
           name: name.trim(),
           description: description.trim() === '' ? null : description.trim(),
           permissions,
+          change_reason: reason.trim(),
         });
         toast.success('Role created');
       }
@@ -128,7 +134,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
       pending={pending}
       error={error}
       fields={FIELDS}
-      submitDisabled={name.trim().length === 0}
+      submitDisabled={name.trim().length === 0 || changeReasonProblem(reason) !== null}
       onSubmit={() => void handleSubmit()}
     >
       <RequiredNote />
@@ -258,6 +264,8 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
           })}
         </div>
       </fieldset>
+
+      <ChangeReasonField id="role-reason" value={reason} onChange={setReason} serverError={error} />
 
       {isEdit && <AccessHistory kind="roles" id={role.id} />}
     </SidePanel>

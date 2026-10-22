@@ -15,7 +15,7 @@ import uuid
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.rest.auth import access_audit
@@ -28,6 +28,7 @@ from app.api.rest.auth.role_schemas import (
     RoleResponse,
     UpdateRoleRequest,
 )
+from app.modules.onboarding import require_change_reason
 from app.platform.authentication.dependencies import get_current_active_user
 from app.platform.authentication.models import User
 from app.platform.authorization.adapters.repository import RoleRepository
@@ -154,7 +155,9 @@ async def list_roles(
         "A custom role can be assigned immediately. Every CRM route checks the "
         "permissions of the role an account holds, so a custom role's grants are "
         "exactly what its holders may do (the catalogue marks the one action not "
-        "consulted yet)."
+        "consulted yet).\n\n"
+        "`change_reason` is required — a ticket number, then an explanation — and "
+        "is kept in the role's history."
     ),
     responses={
         403: {"description": "roles:create permission required"},
@@ -196,6 +199,7 @@ async def create_role(
             access_audit.change("description", None, role.description),
             access_audit.permission_change(set(), granted),
         ],
+        change_reason=body.change_reason,
     )
     logger.info(
         "role_created",
@@ -238,7 +242,9 @@ async def get_role(
         "architecture plan describes their starting permissions, not a "
         "guarantee. `permissions`, when supplied, replaces the whole set.\n\n"
         "One edit is refused: removing `roles:edit` from the role you yourself "
-        "hold, because no one could grant it back afterwards."
+        "hold, because no one could grant it back afterwards.\n\n"
+        "`change_reason` is required — a ticket number, then an explanation — and "
+        "is kept in the role's history."
     ),
     responses={
         403: {"description": "roles:edit permission required"},
@@ -254,7 +260,7 @@ async def update_role(
 ) -> RoleResponse:
     repo = RoleRepository(db)
     role = await _role_or_404(repo, role_id)
-    fields = body.model_dump(exclude_unset=True)
+    fields = body.model_dump(exclude_unset=True, exclude={"change_reason"})
 
     if body.permissions is not None:
         new_pairs = {(p.module, p.action) for p in body.permissions}
@@ -297,6 +303,7 @@ async def update_role(
                 else before["permissions"],
             ),
         ],
+        change_reason=body.change_reason,
     )
     counts = await repo.user_counts()
     logger.info(
@@ -320,7 +327,9 @@ async def update_role(
         "unmigrated route still reads, so deleting one would leave its holders "
         "resolving to no permissions at all.\n\n"
         "Also refused while any account still holds the role — reassign them "
-        "first. Silently demoting people is a privilege change nobody asked for."
+        "first. Silently demoting people is a privilege change nobody asked for.\n\n"
+        "`change_reason` (a query parameter, as a DELETE has no body) is required — a "
+        "ticket number, then an explanation — and is kept in the role's history."
     ),
     responses={
         403: {"description": "roles:delete permission required"},
@@ -331,8 +340,12 @@ async def update_role(
 async def delete_role(
     role_id: uuid.UUID,
     current_user: Annotated[User, Depends(_CAN_DELETE)],
+    change_reason: Annotated[
+        str, Query(max_length=1000, description="Why: a ticket number, then an explanation")
+    ],
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    reason = require_change_reason(change_reason)
     repo = RoleRepository(db)
     role = await _role_or_404(repo, role_id)
 
@@ -366,6 +379,7 @@ async def delete_role(
         subject_id=role.id,
         subject_name=role.name,
         changes=[access_audit.change("name", role.name, None)],
+        change_reason=reason,
     )
     await db.delete(role)
     await db.flush()

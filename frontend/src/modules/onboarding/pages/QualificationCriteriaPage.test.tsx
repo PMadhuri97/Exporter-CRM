@@ -55,6 +55,12 @@ function signedInAs(role: string) {
   });
 }
 
+const REASON = 'CHG-1042: credit committee raised the floor';
+
+function giveReason(dialog: HTMLElement, reason = REASON) {
+  fireEvent.change(within(dialog).getByLabelText(/^Reason for change/), { target: { value: reason } });
+}
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -99,10 +105,12 @@ describe('QualificationCriteriaPage', () => {
     fireEvent.change(within(dialog).getByLabelText(/^Key/), { target: { value: 'has_iec' } });
     fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: 'Holds an IEC' } });
     fireEvent.change(within(dialog).getByLabelText(/^Kind/), { target: { value: 'YES_NO' } });
+    giveReason(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add criterion' }));
 
     await waitFor(() =>
       expect(createCriterion).toHaveBeenCalledWith({
+        change_reason: REASON,
         key: 'has_iec',
         label: 'Holds an IEC',
         kind: 'YES_NO',
@@ -130,6 +138,7 @@ describe('QualificationCriteriaPage', () => {
     const auto = within(dialog).getByLabelText(/^Answer automatically from/);
     expect(within(auto).queryByRole('option', { name: 'Year established' })).not.toBeInTheDocument();
     fireEvent.change(auto, { target: { value: 'IEC_VERIFICATION' } });
+    giveReason(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add criterion' }));
 
     await waitFor(() =>
@@ -148,14 +157,43 @@ describe('QualificationCriteriaPage', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByLabelText(/^Threshold/)).toHaveValue('100000');
     fireEvent.change(within(dialog).getByLabelText(/^Threshold/), { target: { value: '150000' } });
+    giveReason(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save new version' }));
 
     await waitFor(() =>
       expect(addCriterionVersion).toHaveBeenCalledWith(
         'annual_exports',
-        expect.objectContaining({ threshold: 150000, comparison: 'AT_LEAST', unit: 'USD' }),
+        expect.objectContaining({
+          threshold: 150000,
+          comparison: 'AT_LEAST',
+          unit: 'USD',
+          change_reason: REASON,
+        }),
       ),
     );
+  });
+
+  it('will not save a new version without a reason a reviewer could follow', async () => {
+    renderPage();
+    await screen.findByTestId('criterion-row');
+    fireEvent.click(screen.getByRole('button', { name: 'New version of Annual exports' }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/^Threshold/), { target: { value: '150000' } });
+    const save = within(dialog).getByRole('button', { name: 'Save new version' });
+    expect(save).toBeDisabled();
+
+    giveReason(dialog, 'update');
+    expect(save).toBeDisabled();
+    expect(within(dialog).getByText(/ticket number in capitals, e\.g\. CHG-1042/)).toBeInTheDocument();
+
+    giveReason(dialog, 'INC0012345');
+    expect(save).toBeDisabled();
+    expect(within(dialog).getByText(/explain the change in at least 2 words/)).toBeInTheDocument();
+
+    giveReason(dialog, 'INC0012345 raise the export floor');
+    expect(save).toBeEnabled();
+    expect(addCriterionVersion).not.toHaveBeenCalled();
   });
 
   it('says so when someone else changed the criterion first', async () => {
@@ -166,6 +204,7 @@ describe('QualificationCriteriaPage', () => {
     await screen.findByTestId('criterion-row');
     fireEvent.click(screen.getByRole('button', { name: 'New version of Annual exports' }));
     const dialog = await screen.findByRole('dialog');
+    giveReason(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save new version' }));
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Someone else changed this criterion/);
@@ -175,7 +214,7 @@ describe('QualificationCriteriaPage', () => {
     vi.mocked(listCriterionVersions).mockResolvedValue({
       criteria: [
         { ...CRITERION, id: 'v1', version: 1, threshold: 50000 },
-        { ...CRITERION, id: 'v2', version: 2 },
+        { ...CRITERION, id: 'v2', version: 2, change_reason: REASON },
       ],
     });
     renderPage();
@@ -183,6 +222,7 @@ describe('QualificationCriteriaPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Versions/ }));
     const versions = await screen.findAllByTestId('criterion-version');
     expect(versions[0]).toHaveTextContent('v2');
+    expect(versions[0]).toHaveTextContent(`Reason: ${REASON}`);
     expect(versions[1]).toHaveTextContent('v1');
     expect(versions[1]).toHaveTextContent('at least 50000 USD');
   });

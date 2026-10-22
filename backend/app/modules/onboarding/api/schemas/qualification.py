@@ -18,6 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.onboarding.api.schemas.change_reason import ChangeReason
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 from app.modules.onboarding.domain.entities.qualification import (
     QualificationCriterion,
@@ -70,6 +71,8 @@ class CriterionDefinitionRequest(BaseModel):
     #: Answer this criterion automatically from: IEC_VERIFICATION, YEARS_ESTABLISHED,
     #: INDUSTRY, EXPORT_MARKETS, TRADE_HISTORY or DEAL_VALUE. Each fits one kind.
     auto_source: AutoSourceValue | None = None
+    #: Why: a ticket number or an explanation. Required, and kept on the version.
+    change_reason: ChangeReason
 
     def to_definition(self) -> CriterionDefinition:
         return CriterionDefinition(
@@ -106,6 +109,9 @@ class CriterionResponse(BaseModel):
     created_by: str | None
     created_at: datetime
     auto_source: AutoSourceValue | None = None
+    #: Why this version was written. `null` for seeded versions and those before it
+    #: was asked for.
+    change_reason: str | None = None
 
     @classmethod
     def of(cls, row: QualificationCriterion) -> CriterionResponse:
@@ -124,6 +130,7 @@ class CriterionResponse(BaseModel):
             created_by=row.created_by,
             created_at=row.created_at,
             auto_source=row.auto_source,  # type: ignore[arg-type]
+            change_reason=row.change_reason,
         )
 
 

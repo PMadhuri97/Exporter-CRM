@@ -403,6 +403,8 @@ describe('ExporterDetailPage — screening review', () => {
         {
           id: 'c1',
           customer_id: DETAIL.customer_id,
+          first_name: 'Priya',
+          last_name: 'Shah',
           name: 'Priya Shah',
           role: null,
           email: null,

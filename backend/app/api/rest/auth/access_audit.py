@@ -70,8 +70,10 @@ async def record(
     subject_id: uuid.UUID,
     subject_name: str | None,
     changes: list[dict[str, Any] | None],
+    change_reason: str | None = None,
 ) -> None:
-    """Write one access event (flushes; the caller's commit makes it durable)."""
+    """Write one access event (flushes; the caller's commit makes it durable).
+    ``change_reason`` is the ticket and explanation a role change was made for."""
     await AuditService(db).record(
         event_type,
         actor_id=actor.id,
@@ -82,6 +84,7 @@ async def record(
             "subject_name": subject_name,
             "actor_name": actor.full_name or actor.email,
             "changes": [c for c in changes if c is not None],
+            "change_reason": change_reason,
         },
     )
 
@@ -105,6 +108,9 @@ class AccessHistoryEntryResponse(BaseModel):
     actor_id: uuid.UUID | None
     actor_name: str | None
     changes: list[AccessChangeResponse]
+    #: Why the change was made — asked of every role change; ``null`` for user
+    #: changes and for role changes made before it was asked.
+    change_reason: str | None = None
 
 
 class AccessHistoryResponse(BaseModel):
@@ -132,6 +138,7 @@ async def history(
                 event_type=event.event_type,
                 actor_id=event.actor_id,
                 actor_name=payload.get("actor_name"),
+                change_reason=payload.get("change_reason"),
                 changes=[
                     AccessChangeResponse(
                         field=c.get("field", ""),

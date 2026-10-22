@@ -1102,13 +1102,24 @@ async def list_proposals_across_companies(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    order: Annotated[
+        Literal["oldest", "newest"],
+        Query(
+            description=(
+                "With `awaiting=me`: `oldest` (the default) lists the longest waiting "
+                "first; `newest` the most recently proposed first."
+            )
+        ),
+    ] = "oldest",
 ) -> BackgroundCheckProposalListResponse:
     repository = BackgroundCheckProposalRepository(db)
     facts: dict[uuid.UUID, WorkItem] = {}
     if awaiting == "me":
         # Eligibility is the worklist's rule (proposer, reviewer, RM, senior): the
         # worklist chooses and pages the proposals, and only that page is read in full.
-        mine = await ComplianceWorklists(db).approvable_by(str(user.id))
+        mine = await ComplianceWorklists(db).approvable_by(
+            str(user.id), newest_first=order == "newest"
+        )
         page = mine[offset : offset + limit]
         facts = {item.company_id: item for item in page}
         rows = []
@@ -1247,7 +1258,9 @@ async def list_proposals_i_reviewed(
         "the soonest. An expired Clear still reads CLEAR (nothing moves the gauge "
         "automatically) but no longer promotes the company or lets its deals be handed "
         "over. A company whose Re-KYC has started is not listed: starting it reopens the "
-        "check. Names only, never an identifier. Staff; DEVELOPER is refused."
+        "check. Names only, never an identifier. Staff; DEVELOPER is refused.\n\n"
+        "`order=newest` lists the latest expiry first instead — the Clear that most "
+        "recently came due at the top, as Compliance work shows it."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -1264,12 +1277,18 @@ async def list_rekyc_due(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    order: Annotated[
+        Literal["oldest", "newest"],
+        Query(description="`oldest` (the default): expired first, then the soonest."),
+    ] = "oldest",
 ) -> ReKycDueListResponse:
     now = clock.now()
     if before is not None and (before.tzinfo is None or before.utcoffset() is None):
         raise ValidationError("`before` needs a time zone, e.g. 2026-11-01T00:00:00Z")
     cutoff = before if before is not None else now + rekyc_due_window()
-    companies, total = await rekyc_due(db, before=cutoff, now=now, limit=limit, offset=offset)
+    companies, total = await rekyc_due(
+        db, before=cutoff, now=now, limit=limit, offset=offset, newest_first=order == "newest"
+    )
     return ReKycDueListResponse(
         companies=[
             ReKycDueCompanyResponse(

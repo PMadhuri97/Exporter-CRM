@@ -7,11 +7,13 @@ import { NOT_FOUND_TITLE } from '@/components';
 import { useAuth, useCurrentUser } from '@/platform/auth';
 
 import {
+  deleteRole,
   getMyPermissions,
   getPermissionCatalog,
   listOwnSessions,
   listRoles,
   listUsers,
+  updateRole,
   updateUser,
 } from '../api';
 import type { AdminUser, PermissionRef, Role } from '../types';
@@ -379,6 +381,47 @@ describe('RolesTab', () => {
     expect(
       screen.getByRole('button', { name: 'Delete Credit reviewer' }),
     ).toBeInTheDocument();
+  });
+
+  it('deletes a role only with a reason, sent to the server', async () => {
+    vi.mocked(deleteRole).mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('link', { name: 'Roles' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Credit reviewer' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const commit = within(dialog).getByRole('button', { name: 'Delete role' });
+    expect(commit).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText(/^Reason for change/), { target: { value: 'chg-7' } });
+    expect(commit).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText(/^Reason for change/), {
+      target: { value: 'CHG-3001: role no longer used' },
+    });
+    fireEvent.click(commit);
+    await waitFor(() =>
+      expect(deleteRole).toHaveBeenCalledWith(expect.any(String), 'CHG-3001: role no longer used'),
+    );
+  });
+
+  it('will not save a role edit until the change says why', async () => {
+    vi.mocked(updateRole).mockResolvedValue({} as Role);
+    renderPage();
+    fireEvent.click(await screen.findByRole('link', { name: 'Roles' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Credit reviewer' }));
+
+    const save = await screen.findByRole('button', { name: 'Save changes' });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/^Reason for change/), {
+      target: { value: 'CHG-3002: grant the user list for audits' },
+    });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(updateRole).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ change_reason: 'CHG-3002: grant the user list for audits' }),
+      ),
+    );
   });
 
   it('hides create, edit and delete controls without those permissions', async () => {

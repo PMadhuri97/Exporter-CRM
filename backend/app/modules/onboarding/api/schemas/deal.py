@@ -31,6 +31,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, model_validator
 
+from app.modules.onboarding.api.schemas.change_reason import ChangeReason
 from app.modules.onboarding.api.schemas.masking import (
     NotMasked,
     can_reveal_identifiers,
@@ -123,6 +124,11 @@ class PaymentTermResponse(BaseModel):
     days: int | None
     active: bool
     is_current: bool
+    created_by: str | None = None
+    created_at: datetime | None = None
+    #: Why this version was written. `null` for seeded versions and those before it
+    #: was asked for.
+    change_reason: str | None = None
 
 
 class TransitionDealStageRequest(BaseModel):
@@ -502,6 +508,8 @@ class SetDealRequiredDocumentRequest(BaseModel):
             "a new version is written; nothing is updated or deleted."
         ),
     )
+    #: Why: a ticket number or an explanation. Required, and kept on the version.
+    change_reason: ChangeReason
 
 
 class DealRequiredDocumentResponse(BaseModel):
@@ -516,6 +524,9 @@ class DealRequiredDocumentResponse(BaseModel):
     active: bool
     created_by: str | None
     created_at: datetime
+    #: Why this version was written. `null` for seeded versions and those before it
+    #: was asked for.
+    change_reason: str | None = None
 
     @classmethod
     def from_entity(cls, row: DealRequiredDocument) -> DealRequiredDocumentResponse:
@@ -527,6 +538,7 @@ class DealRequiredDocumentResponse(BaseModel):
             active=row.active,
             created_by=row.created_by,
             created_at=row.created_at,
+            change_reason=row.change_reason,
         )
 
 
@@ -688,6 +700,8 @@ class AddPaymentTermRequest(BaseModel):
     label: str = Field(min_length=1, max_length=120)
     kind: str = Field(description="ADVANCE, LC_SIGHT, LC_USANCE, DP, DA or OPEN_ACCOUNT")
     days: int | None = Field(default=None, gt=0)
+    #: Why: a ticket number or an explanation. Required, and kept on the version.
+    change_reason: ChangeReason
 
 
 class RevisePaymentTermRequest(BaseModel):
@@ -699,6 +713,8 @@ class RevisePaymentTermRequest(BaseModel):
     kind: str | None = None
     days: int | None = Field(default=None, gt=0)
     active: bool | None = None
+    #: Why: a ticket number or an explanation. Required, and kept on the version.
+    change_reason: ChangeReason
 
 
 class SetDefaultPaymentTermRequest(BaseModel):

@@ -17,6 +17,12 @@
  * of them is a filter only: every reader sees every company. ADMIN and holders of
  * `exporters:assign_rm` get **Reassign companies**.
  *
+ * **Sorted on the server**, because the list is paged: by when each company was added
+ * (the default, newest first — it never changes, so "Show more" neither repeats nor
+ * skips a company), by when it was last updated, by name or by stage, from the File
+ * Explorer-style Sort menu (`SortMenu`). The sort is in the URL (`?sort=`,
+ * `?order=`) like the filters, and every row says when it was last updated.
+ *
  * **How many.** The list route now returns `total` — the count behind the page — so
  * the Filters panel says how many companies match rather than how many are loaded.
  * The journey counts above the list are a separate query and still cap at "200+";
@@ -40,9 +46,13 @@ import {
   Segmented,
   Select,
   Skeleton,
+  SortMenu,
+  type SortColumn,
   useSearchParamState,
+  useSortParams,
 } from '@/components';
 import { Icon } from '@/design/icons';
+import { formatDate } from '@/lib/format';
 import { useCan, useHasPermission } from '@/platform/access';
 
 import { BulkReassignPanel, CompanyBadges } from '../components';
@@ -57,6 +67,7 @@ import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } f
 import { preloadExporterDetailPage } from '../lazyPages';
 import { paths } from '../paths';
 import type {
+  CompanySort,
   ExporterJourney,
   ExporterMarker,
   ExporterProfileListItem,
@@ -93,6 +104,14 @@ const COLLECTIONS_FILTERS: readonly CollectionsFilter[] = ['ANY', 'me', 'none'];
 const CONTACT_FILTERS: readonly ContactFilter[] = ['ANY', 'missing'];
 /** A page of rows; "Show more" asks for the next, up to what one request returns. */
 const PAGE_SIZE = 50;
+/** What the list sorts by — the Sort menu's first part. */
+const SORT_COLUMNS: readonly SortColumn<CompanySort>[] = [
+  { key: 'name', label: 'Name', firstOrder: 'asc' },
+  { key: 'stage', label: 'Stage', firstOrder: 'asc' },
+  { key: 'created_at', label: 'Date added', firstOrder: 'desc' },
+  { key: 'updated_at', label: 'Last updated', firstOrder: 'desc' },
+];
+const DEFAULT_SORT = { key: 'created_at', order: 'desc' } as const;
 
 function JourneyCount({ journey }: { journey: ExporterJourney }) {
   const count = useJourneyCount(journey);
@@ -116,6 +135,7 @@ function identityLine(profile: ExporterProfileListItem): string | null {
     profile.relationship_manager_name
       ? `RM ${profile.relationship_manager_name}${profile.relationship_manager_inactive ? ' (deactivated)' : ''}`
       : 'No RM',
+    `Updated ${formatDate(profile.updated_at)}`,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -184,6 +204,7 @@ export function ExportersListPage() {
     COLLECTIONS_FILTERS,
     'ANY',
   );
+  const [sort, setSort] = useSortParams(SORT_COLUMNS, DEFAULT_SORT);
   const [pages, setPages] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [name, setName] = useState('');
@@ -269,6 +290,8 @@ export function ExportersListPage() {
     relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
     missing_primary_contact: contactFilter === 'missing' || undefined,
     collections_owner: collectionsFilter === 'ANY' ? undefined : collectionsFilter,
+    sort: sort.key,
+    order: sort.order,
   };
   const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
     ...search,
@@ -462,6 +485,14 @@ export function ExportersListPage() {
                 Clear
               </Button>
             )}
+            <SortMenu
+              columns={SORT_COLUMNS}
+              value={sort}
+              onChange={(next) => {
+                setSort(next);
+                setPages(1);
+              }}
+            />
           </div>
         </div>
 

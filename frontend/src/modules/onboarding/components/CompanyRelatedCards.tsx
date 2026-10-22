@@ -169,13 +169,55 @@ function DealsCard({ customerId }: { customerId: string }) {
   );
 }
 
+/**
+ * First and last name, side by side. The first name is required; the last name is not,
+ * because plenty of people go by one name. The full name is the server's to compute.
+ */
+function ContactNameFields({
+  firstName,
+  lastName,
+  onChange,
+}: {
+  firstName: string;
+  lastName: string;
+  onChange: (key: 'first_name' | 'last_name', value: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <label className="block text-caption text-ink-3">
+        First name
+        <RequiredMark />
+        <Input
+          className="mt-1"
+          value={firstName}
+          maxLength={120}
+          autoComplete="off"
+          onChange={(event) => onChange('first_name', event.target.value)}
+          required
+        />
+      </label>
+      <label className="block text-caption text-ink-3">
+        Last name
+        <Input
+          className="mt-1"
+          value={lastName}
+          maxLength={120}
+          autoComplete="off"
+          onChange={(event) => onChange('last_name', event.target.value)}
+        />
+      </label>
+    </div>
+  );
+}
+
 /** Adding a person: their name, and whatever else is known. */
 function AddContactForm({ customerId, onDone }: { customerId: string; onDone: () => void }) {
   const mutation = useAddExporterContact(customerId);
   /** Why the last attempt was refused, under the fields it is about. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState<AddExporterContactRequest>({
-    name: '',
+    first_name: '',
+    last_name: null,
     role: null,
     email: null,
     phone: null,
@@ -188,12 +230,13 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!form.name.trim()) return;
+    if (!form.first_name.trim()) return;
     setRefusal(null);
     try {
       await mutation.mutateAsync({
         ...form,
-        name: form.name.trim(),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name?.trim() || null,
         role: form.role?.trim() || null,
         email: form.email?.trim() || null,
         phone: form.phone?.trim() || null,
@@ -227,16 +270,11 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
   return (
     <form onSubmit={submit} className="space-y-4">
       <RequiredNote />
-      <label className="block text-caption text-ink-3">
-        Name
-        <RequiredMark />
-        <Input
-          className="mt-1"
-          value={form.name}
-          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          required
-        />
-      </label>
+      <ContactNameFields
+        firstName={form.first_name}
+        lastName={form.last_name ?? ''}
+        onChange={(key, value) => setForm((prev) => ({ ...prev, [key]: value }))}
+      />
       {field('role', 'Role / title')}
       {field('email', 'Email', 'email')}
       {field('phone', 'Phone')}
@@ -253,7 +291,7 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
       {refusal && <InlineError>{refusal}</InlineError>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={!form.name.trim()} loading={mutation.isPending}>
+        <Button type="submit" variant="primary" disabled={!form.first_name.trim()} loading={mutation.isPending}>
           Add contact
         </Button>
       </div>
@@ -292,7 +330,8 @@ function EditContactForm({
   /** Why the last save was refused, shown under the fields it is about. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState({
-    name: contact.name,
+    first_name: contact.first_name,
+    last_name: contact.last_name ?? '',
     role: contact.role ?? '',
     department: contact.department ?? '',
     email: mayReveal ? (contact.email ?? '') : '',
@@ -308,12 +347,13 @@ function EditContactForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const name = form.name.trim();
-    if (!name) return;
+    const firstName = form.first_name.trim();
+    if (!firstName) return;
 
     const payload: UpdateExporterContactRequest = {};
-    if (name !== contact.name) payload.name = name;
     const text = (value: string) => value.trim() || null;
+    if (firstName !== contact.first_name) payload.first_name = firstName;
+    if (text(form.last_name) !== (contact.last_name ?? null)) payload.last_name = text(form.last_name);
     if (text(form.role) !== (contact.role ?? null)) payload.role = text(form.role);
     if (text(form.department) !== (contact.department ?? null)) {
       payload.department = text(form.department);
@@ -395,16 +435,11 @@ function EditContactForm({
   return (
     <form onSubmit={submit} className="space-y-4">
       <RequiredNote />
-      <label className="block text-caption text-ink-3">
-        Name
-        <RequiredMark />
-        <Input
-          className="mt-1"
-          value={form.name}
-          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          required
-        />
-      </label>
+      <ContactNameFields
+        firstName={form.first_name}
+        lastName={form.last_name ?? ''}
+        onChange={(key, value) => setForm((prev) => ({ ...prev, [key]: value }))}
+      />
       {field('role', 'Role / title')}
       {field('email', 'Email', 'email')}
       {field('phone', 'Phone')}
@@ -462,7 +497,7 @@ function EditContactForm({
         <Button
           type="submit"
           variant="primary"
-          disabled={!form.name.trim() || (needsReason && !form.reason.trim())}
+          disabled={!form.first_name.trim() || (needsReason && !form.reason.trim())}
           loading={mutation.isPending || statusMutation.isPending}
         >
           Save contact

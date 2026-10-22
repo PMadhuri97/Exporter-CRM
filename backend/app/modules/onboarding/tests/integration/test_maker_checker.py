@@ -723,6 +723,34 @@ async def test_the_rm_never_approves_and_developer_sees_nothing(client: AsyncCli
         assert cursor.fetchone()[0] == 0
 
 
+async def test_the_queue_can_list_the_newest_proposal_first(client: AsyncClient, people):
+    """Compliance work shows what arrived today at the top: `order=newest` puts the
+    proposal just made first, where the default order puts it last."""
+    maker = people["maker"][1]
+    checker = people["checker"][1]
+    company_id, _ = await _company_with_identifiers(client, maker)
+    proposal = (await client.post(
+        f"{BASE}/exporters/{company_id}/background-check/decisions",
+        json={"to_value": "CLEAR", "reason": "ok", "risk_rating": "MEDIUM"},
+        headers=auth_header(maker),
+    )).json()
+
+    newest = await client.get(
+        f"{BASE}/background-check/proposals",
+        params={"awaiting": "me", "order": "newest", "limit": 1},
+        headers=auth_header(checker),
+    )
+    assert newest.status_code == 200, newest.text
+    assert [p["id"] for p in newest.json()["proposals"]] == [proposal["id"]]
+
+    refused = await client.get(
+        f"{BASE}/background-check/proposals",
+        params={"awaiting": "me", "order": "sideways"},
+        headers=auth_header(checker),
+    )
+    assert refused.status_code == 422
+
+
 async def test_the_queue_lists_what_awaits_me_and_not_my_own(client: AsyncClient, people):
     maker_id, maker = people["maker"]
     checker = people["checker"][1]

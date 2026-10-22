@@ -52,6 +52,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Index,
     Numeric,
@@ -137,6 +138,10 @@ class ExporterContact(AnerModel):
         UniqueConstraint("id", "customer_id", name="uq_exporter_contact_id_customer"),
         {"schema": SCHEMA},
     )
+    #: ``name`` is set by the database, so an INSERT or UPDATE must read it back
+    #: (``RETURNING``): left expired, the next read of it is a lazy load, which an async
+    #: session refuses (``MissingGreenlet``) — the history row for a role change reads it.
+    __mapper_args__ = {"eager_defaults": True}
 
     #: The company. `ON DELETE RESTRICT`, so a company with contacts cannot be
     #: deleted out from under them — the same rule every other child of
@@ -150,7 +155,21 @@ class ExporterContact(AnerModel):
         ),
         nullable=False,
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: A person's first and last name, kept apart (migration 0062). The last name is
+    #: optional: plenty of people go by one name.
+    first_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The full name, set by the database from the two above and never written here:
+    #: every reader that wants "the contact's name" reads this, and it cannot drift.
+    #: Until the release after 0062 it is a plain column kept in step by
+    #: ``trg_exporter_contact_sync_name`` (so the release before, which writes
+    #: ``name``, keeps working during a deploy); then it becomes a computed column.
+    name: Mapped[str] = mapped_column(
+        String(511),
+        server_default=FetchedValue(),
+        server_onupdate=FetchedValue(),
+        nullable=False,
+    )
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)

@@ -32,6 +32,8 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/auth"
 ROLES = f"{BASE}/roles"
+#: Every role change gives one: a ticket number, then an explanation.
+ROLE_REASON = "CHG-3001: role change for the access review"
 
 # Transcribed from the seed migrations (auth_0004, then auth_0007–auth_0010),
 # independently of catalog.py: a test that imports the value it verifies would pass
@@ -125,7 +127,9 @@ async def test_five_builtin_roles_exist_and_cannot_be_deleted(
     for slug in ("admin", "compliance", "operations", "developer", "api-user"):
         assert roles[slug]["is_builtin"] is True
         resp = await client.delete(
-            f"{ROLES}/{roles[slug]['id']}", headers=auth_header(tokens[UserRole.ADMIN])
+            f"{ROLES}/{roles[slug]['id']}",
+            params={"change_reason": ROLE_REASON},
+            headers=auth_header(tokens[UserRole.ADMIN]),
         )
         assert resp.status_code == 409, (slug, resp.text)
         assert resp.json()["error_code"] == "BUILTIN_ROLE_PROTECTED"
@@ -252,6 +256,7 @@ async def test_granting_users_view_opens_the_user_list_without_a_code_change(
     granted_role = await client.post(
         ROLES,
         json={
+            "change_reason": ROLE_REASON,
             "slug": f"compliance-plus-{uuid.uuid4().hex[:8]}",
             "name": "Compliance + user list",
             "permissions": [
@@ -310,6 +315,7 @@ async def test_custom_role_round_trips_and_can_be_assigned(client: AsyncClient):
     created = await client.post(
         ROLES,
         json={
+            "change_reason": ROLE_REASON,
             "slug": slug,
             "name": "Credit reviewer",
             "description": "Reads companies, reviews verifications.",
@@ -357,7 +363,7 @@ async def test_custom_role_round_trips_and_can_be_assigned(client: AsyncClient):
 async def test_duplicate_slug_is_refused(client: AsyncClient):
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
     slug = f"dupe-{uuid.uuid4().hex[:8]}"
-    body = {"slug": slug, "name": "First"}
+    body = {"slug": slug, "name": "First", "change_reason": ROLE_REASON}
 
     first = await client.post(ROLES, json=body, headers=auth_header(admin_token))
     assert first.status_code == 201, first.text
@@ -381,7 +387,12 @@ async def test_unknown_permission_is_refused_at_the_boundary(client: AsyncClient
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
     resp = await client.post(
         ROLES,
-        json={"slug": f"bad-{uuid.uuid4().hex[:8]}", "name": "Bad", "permissions": [bad]},
+        json={
+            "change_reason": ROLE_REASON,
+            "slug": f"bad-{uuid.uuid4().hex[:8]}",
+            "name": "Bad",
+            "permissions": [bad],
+        },
         headers=auth_header(admin_token),
     )
     assert resp.status_code == 422, resp.text
@@ -391,7 +402,9 @@ async def test_unknown_permission_is_refused_at_the_boundary(client: AsyncClient
 async def test_slug_shape_is_enforced(client: AsyncClient, slug: str):
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
     resp = await client.post(
-        ROLES, json={"slug": slug, "name": "X"}, headers=auth_header(admin_token)
+        ROLES,
+        json={"change_reason": ROLE_REASON, "slug": slug, "name": "X"},
+        headers=auth_header(admin_token),
     )
     assert resp.status_code == 422, (slug, resp.text)
 
@@ -401,6 +414,7 @@ async def test_permissions_update_replaces_rather_than_merges(client: AsyncClien
     created = await client.post(
         ROLES,
         json={
+            "change_reason": ROLE_REASON,
             "slug": f"replace-{uuid.uuid4().hex[:8]}",
             "name": "Replace me",
             "permissions": [
@@ -414,7 +428,7 @@ async def test_permissions_update_replaces_rather_than_merges(client: AsyncClien
 
     updated = await client.patch(
         f"{ROLES}/{role_id}",
-        json={"permissions": [{"module": "audit", "action": "view"}]},
+        json={"change_reason": ROLE_REASON, "permissions": [{"module": "audit", "action": "view"}]},
         headers=auth_header(admin_token),
     )
     assert updated.status_code == 200, updated.text
@@ -425,7 +439,7 @@ async def test_role_held_by_someone_cannot_be_deleted(client: AsyncClient):
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
     created = await client.post(
         ROLES,
-        json={"slug": f"held-{uuid.uuid4().hex[:8]}", "name": "Held"},
+        json={"change_reason": ROLE_REASON, "slug": f"held-{uuid.uuid4().hex[:8]}", "name": "Held"},
         headers=auth_header(admin_token),
     )
     role_id = created.json()["id"]
@@ -442,7 +456,9 @@ async def test_role_held_by_someone_cannot_be_deleted(client: AsyncClient):
     )
     assert made.status_code == 201, made.text
 
-    refused = await client.delete(f"{ROLES}/{role_id}", headers=auth_header(admin_token))
+    refused = await client.delete(
+        f"{ROLES}/{role_id}", params={"change_reason": ROLE_REASON}, headers=auth_header(admin_token)
+    )
     assert refused.status_code == 409, refused.text
     assert refused.json()["error_code"] == "ROLE_STILL_ASSIGNED"
 
@@ -455,20 +471,53 @@ async def test_role_held_by_someone_cannot_be_deleted(client: AsyncClient):
     assert moved.status_code == 200, moved.text
     assert moved.json()["role_id"] is None
 
-    deleted = await client.delete(f"{ROLES}/{role_id}", headers=auth_header(admin_token))
+    deleted = await client.delete(
+        f"{ROLES}/{role_id}", params={"change_reason": ROLE_REASON}, headers=auth_header(admin_token)
+    )
     assert deleted.status_code == 204, deleted.text
+
+
+@pytest.mark.parametrize("reason", [None, "", "chg-7", "CHG-7"])
+async def test_a_role_change_without_a_real_reason_is_refused(client: AsyncClient, reason):
+    """A role decides what its holders may do, so it changes like any live rule: with a
+    ticket number and an explanation, or not at all."""
+    _, admin_token = await user_with_role(client, UserRole.ADMIN)
+    headers = auth_header(admin_token)
+    body = {"slug": f"why-{uuid.uuid4().hex[:8]}", "name": "Why"}
+    if reason is not None:
+        body["change_reason"] = reason
+    refused = await client.post(ROLES, json=body, headers=headers)
+    assert refused.status_code == 422, refused.text
+
+    created = await client.post(
+        ROLES, json={**body, "change_reason": ROLE_REASON}, headers=headers
+    )
+    assert created.status_code == 201, created.text
+    role_url = f"{ROLES}/{created.json()['id']}"
+    edit = {"name": "Why not"} if reason is None else {"name": "Why not", "change_reason": reason}
+    assert (await client.patch(role_url, json=edit, headers=headers)).status_code == 422
+    params = {} if reason is None else {"change_reason": reason}
+    assert (await client.delete(role_url, params=params, headers=headers)).status_code == 422
+    # Nothing was changed by the refusals.
+    assert (await client.get(role_url, headers=headers)).json()["name"] == "Why"
 
 
 async def test_unassignable_role_cannot_be_given_to_anyone(client: AsyncClient):
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
     created = await client.post(
         ROLES,
-        json={"slug": f"wip-{uuid.uuid4().hex[:8]}", "name": "Work in progress"},
+        json={
+            "change_reason": ROLE_REASON,
+            "slug": f"wip-{uuid.uuid4().hex[:8]}",
+            "name": "Work in progress",
+        },
         headers=auth_header(admin_token),
     )
     role_id = created.json()["id"]
     await client.patch(
-        f"{ROLES}/{role_id}", json={"is_assignable": False}, headers=auth_header(admin_token)
+        f"{ROLES}/{role_id}",
+        json={"change_reason": ROLE_REASON, "is_assignable": False},
+        headers=auth_header(admin_token),
     )
 
     resp = await client.post(
@@ -507,7 +556,7 @@ async def test_cannot_strip_role_management_from_your_own_role(client: AsyncClie
 
     resp = await client.patch(
         f"{ROLES}/{admin_role['id']}",
-        json={"permissions": [{"module": "users", "action": "view"}]},
+        json={"change_reason": ROLE_REASON, "permissions": [{"module": "users", "action": "view"}]},
         headers=auth_header(admin_token),
     )
     assert resp.status_code == 409, resp.text
@@ -524,6 +573,7 @@ async def test_can_edit_a_role_you_do_not_hold(client: AsyncClient):
     created = await client.post(
         ROLES,
         json={
+            "change_reason": ROLE_REASON,
             "slug": f"other-{uuid.uuid4().hex[:8]}",
             "name": "Someone else's role",
             "permissions": [{"module": "roles", "action": "edit"}],
@@ -532,7 +582,7 @@ async def test_can_edit_a_role_you_do_not_hold(client: AsyncClient):
     )
     resp = await client.patch(
         f"{ROLES}/{created.json()['id']}",
-        json={"permissions": []},
+        json={"change_reason": ROLE_REASON, "permissions": []},
         headers=auth_header(admin_token),
     )
     assert resp.status_code == 200, resp.text
@@ -603,6 +653,7 @@ async def test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor(
     editor_role = await client.post(
         ROLES,
         json={
+            "change_reason": ROLE_REASON,
             "slug": f"useredit-{uuid.uuid4().hex[:8]}",
             "name": "User editor",
             "permissions": [
@@ -632,6 +683,7 @@ async def test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor(
     manager_role = await client.post(
         ROLES,
         json={
+            "change_reason": ROLE_REASON,
             "slug": f"rolemgr-{uuid.uuid4().hex[:8]}",
             "name": "Role manager",
             "permissions": [{"module": "roles", "action": "edit"}],

@@ -26,6 +26,20 @@
 > company is flagged by a sanctions match* — a true match proposed or confirmed on any of
 > its subjects' latest screenings, in whatever cycle (`verification-and-screening.md`).
 
+> **Amendment, 19 October 2026 — every settings change says why (migration 0063).**
+> `POST /settings/deal-required-documents`, `POST /settings/payment-terms` and `PATCH
+> /settings/payment-terms/{code}` (retiring and offering a term again included) each
+> **require** `change_reason`; each version they return carries `change_reason`,
+> `created_by` and `created_at`.
+> `change_reason` is a **ticket number in capitals, then an explanation**: `CHG-1042` (or
+> a ServiceNow-style `CHG0031234`) first, then `:`, a dash or a space, then at least two
+> real words (two or more Latin letters each) and ten characters —
+> `CHG-1042: raise the turnover floor`. Missing, blank, `chg-7`, `CHG-7` alone or a
+> description with no ticket is a 422 on `change_reason`, and nothing is written. The
+> reason is trimmed, its spaces collapsed, and kept on the version written; versions
+> written before 0063 (and the seeded ones) read `null`. The rule is
+> `domain/change_reason.py`.
+
 **Owner:** Developer 2 (Developer 3B before 1 October 2026) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
 **Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,

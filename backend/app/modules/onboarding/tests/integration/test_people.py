@@ -1,7 +1,7 @@
 """A company's directors and beneficial owners, recorded as people, over HTTP and in SQL.
 
 Migration ``onboarding_0057_people``: a person is one ``exporter_contact`` row with roles
-(contact, director, beneficial owner). Only the name and a role are required; the
+(contact, director, beneficial owner). Only the first name and a role are required; the
 director-only and owner-only fields need that role; date of birth, DIN and the
 identification number are masked unless the viewer holds
 ``exporters:view_full_tax_id``; the identification number is stored encrypted; and a
@@ -27,7 +27,8 @@ pytestmark = pytest.mark.asyncio
 BASE = "/api/v1/onboarding/exporters"
 MASKED_DATE = "••••-••-••"
 DIRECTOR = {
-    "name": "Ravi Kumar",
+    "first_name": "Ravi",
+    "last_name": "Kumar",
     "is_contact": False,
     "is_director": True,
     "din": "01234567",
@@ -66,7 +67,7 @@ async def test_a_director_is_recorded_with_only_a_name_and_a_role(client: AsyncC
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
 
-    resp = await _add(client, token, customer_id, name="Meera Shah", is_contact=False, is_director=True)
+    resp = await _add(client, token, customer_id, first_name="Meera", last_name="Shah", is_contact=False, is_director=True)
 
     assert resp.status_code == 201, resp.text
     body = resp.json()
@@ -77,9 +78,9 @@ async def test_a_director_is_recorded_with_only_a_name_and_a_role(client: AsyncC
 async def test_directors_are_listed_apart_from_contacts(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
-    await _add(client, token, customer_id, name="Front Desk")
-    await _add(client, token, customer_id, name="Board Only", is_contact=False, is_director=True)
-    await _add(client, token, customer_id, name="Both", is_director=True)
+    await _add(client, token, customer_id, first_name="Front", last_name="Desk")
+    await _add(client, token, customer_id, first_name="Board", last_name="Only", is_contact=False, is_director=True)
+    await _add(client, token, customer_id, first_name="Both", is_director=True)
 
     assert {c["name"] for c in await _list(client, token, customer_id)} == {"Front Desk", "Both"}
     assert {c["name"] for c in await _list(client, token, customer_id, "DIRECTOR")} == {
@@ -143,7 +144,7 @@ async def test_a_masked_value_sent_back_is_refused(client: AsyncClient):
     customer_id = await make_company()
 
     resp = await _add(
-        client, token, customer_id, name="Echo", is_ubo=True,
+        client, token, customer_id, first_name="Echo", is_ubo=True,
         identification_type="PASSPORT", identification_number="••••4321",
     )
 
@@ -175,7 +176,7 @@ async def test_a_person_breaking_a_role_rule_is_refused(client: AsyncClient, bod
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
 
-    resp = await _add(client, token, customer_id, name="Rule Breaker", **body)
+    resp = await _add(client, token, customer_id, first_name="Rule", last_name="Breaker", **body)
 
     assert resp.status_code == 422, resp.text
     assert await _list(client, token, customer_id, "ALL") == []
@@ -205,8 +206,8 @@ async def test_an_edit_breaking_a_role_rule_is_refused_and_changes_nothing(
     # field empty) and never reaching the database's CHECK as a 500.
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
-    first_id = (await _add(client, token, customer_id, name="First Primary", is_primary=True)).json()["id"]
-    person_id = (await _add(client, token, customer_id, name="Plain Contact")).json()["id"]
+    first_id = (await _add(client, token, customer_id, first_name="First", last_name="Primary", is_primary=True)).json()["id"]
+    person_id = (await _add(client, token, customer_id, first_name="Plain", last_name="Contact")).json()["id"]
     target = first_id if body.get("is_contact") is False else person_id
 
     resp = await client.patch(
@@ -224,8 +225,8 @@ async def test_an_edit_breaking_a_role_rule_is_refused_and_changes_nothing(
 async def test_promoting_a_person_demotes_the_previous_primary(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
-    first_id = (await _add(client, token, customer_id, name="First Primary", is_primary=True)).json()["id"]
-    person_id = (await _add(client, token, customer_id, name="Director And Contact", is_director=True)).json()["id"]
+    first_id = (await _add(client, token, customer_id, first_name="First", last_name="Primary", is_primary=True)).json()["id"]
+    person_id = (await _add(client, token, customer_id, first_name="Director", last_name="And Contact", is_director=True)).json()["id"]
 
     resp = await client.patch(
         f"{BASE}/{customer_id}/contacts/{person_id}",
@@ -243,7 +244,7 @@ async def test_adding_an_owner_writes_a_history_row(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
     resp = await _add(
-        client, token, customer_id, name="Anita Rao", is_contact=False, is_ubo=True,
+        client, token, customer_id, first_name="Anita", last_name="Rao", is_contact=False, is_ubo=True,
         ownership_pct=40, control_type="DIRECT_OWNERSHIP",
     )
     assert resp.status_code == 201, resp.text
@@ -258,7 +259,7 @@ async def test_adding_an_owner_writes_a_history_row(client: AsyncClient):
 async def test_a_plain_contact_writes_no_person_history(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
-    assert (await _add(client, token, customer_id, name="Just A Contact")).status_code == 201
+    assert (await _add(client, token, customer_id, first_name="Just", last_name="A Contact")).status_code == 201
 
     assert await _contact_history(client, token, customer_id) == []
 
@@ -267,7 +268,7 @@ async def test_taking_the_director_role_away_clears_the_din(client: AsyncClient)
     token = await token_with_role(client, UserRole.COMPLIANCE)
     customer_id = await make_company()
     person_id = (
-        await _add(client, token, customer_id, name="Former Director", is_director=True, din="76543210")
+        await _add(client, token, customer_id, first_name="Former", last_name="Director", is_director=True, din="76543210")
     ).json()["id"]
 
     resp = await client.patch(
@@ -289,7 +290,7 @@ async def test_a_primary_contact_who_stops_being_a_contact_stops_being_primary(
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()
     person_id = (
-        await _add(client, token, customer_id, name="Owner And Contact", is_ubo=True, is_primary=True)
+        await _add(client, token, customer_id, first_name="Owner", last_name="And Contact", is_ubo=True, is_primary=True)
     ).json()["id"]
 
     resp = await client.patch(
@@ -322,7 +323,7 @@ async def test_clearing_the_identification_number_clears_its_type(client: AsyncC
 
 def _person(cur, customer_id, **columns) -> uuid.UUID:
     person_id = uuid.uuid4()
-    values = {"name": "SQL Person", **columns}
+    values = {"first_name": "SQL", "last_name": "Person", **columns}
     names = ", ".join(values)
     marks = ", ".join(["%s"] * len(values))
     cur.execute(

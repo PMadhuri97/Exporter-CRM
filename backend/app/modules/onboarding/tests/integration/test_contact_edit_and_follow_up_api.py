@@ -28,7 +28,7 @@ async def _company_with_contact(client: AsyncClient, token: str, **contact) -> t
     resp = await client.post(
         f"{BASE}/{customer_id}/contacts",
         headers=auth_header(token),
-        json={"name": "Jane Doe", **contact},
+        json={"first_name": "Jane", "last_name": "Doe", **contact},
     )
     assert resp.status_code == 201, resp.text
     return customer_id, resp.json()["id"]
@@ -44,21 +44,52 @@ async def test_edit_trims_the_name(client: AsyncClient):
     resp = await client.patch(
         f"{BASE}/{customer_id}/contacts/{contact_id}",
         headers=auth_header(token),
-        json={"name": "  Jane Smith  "},
+        json={"first_name": "  Janet  ", "last_name": "  Smith  "},
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["name"] == "Jane Smith"
+    assert resp.json()["first_name"] == "Janet"
+    assert resp.json()["last_name"] == "Smith"
+    assert resp.json()["name"] == "Janet Smith"
+
+
+async def test_a_blank_last_name_clears_it(client: AsyncClient):
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    customer_id, contact_id = await _company_with_contact(client, token)
+
+    resp = await client.patch(
+        f"{BASE}/{customer_id}/contacts/{contact_id}",
+        headers=auth_header(token),
+        json={"last_name": "  "},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["last_name"] is None
+    assert resp.json()["name"] == "Jane"
+
+
+async def test_the_full_name_is_not_accepted_as_input(client: AsyncClient):
+    """`name` is computed from the two parts; a client sending it is out of date."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    customer_id = await make_company()
+
+    resp = await client.post(
+        f"{BASE}/{customer_id}/contacts",
+        headers=auth_header(token),
+        json={"name": "Jane Doe"},
+    )
+
+    assert resp.status_code == 422, resp.text
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        pytest.param({"name": None}, id="name-null"),
+        pytest.param({"first_name": None}, id="first-name-null"),
         # Null alongside a real change used to be dropped silently, so the role
         # changed and the request reported success for a name it never touched.
-        pytest.param({"name": None, "role": "CFO"}, id="name-null-with-another-field"),
-        pytest.param({"name": "   "}, id="name-blank"),
+        pytest.param({"first_name": None, "role": "CFO"}, id="first-name-null-with-another-field"),
+        pytest.param({"first_name": "   "}, id="first-name-blank"),
         pytest.param({"is_primary": None}, id="is-primary-null"),
         pytest.param({}, id="empty-body"),
         pytest.param({"nickname": "JD"}, id="unknown-field"),
@@ -135,7 +166,7 @@ async def test_adding_a_contact_with_a_blank_name_is_refused(client: AsyncClient
     resp = await client.post(
         f"{BASE}/{customer_id}/contacts",
         headers=auth_header(token),
-        json={"name": "   "},
+        json={"first_name": "   "},
     )
 
     assert resp.status_code == 422, resp.text

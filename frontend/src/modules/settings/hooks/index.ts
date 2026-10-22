@@ -190,7 +190,9 @@ export function useUpdateRole() {
 }
 
 export function useDeleteRole() {
-  return useRoleMutation((roleId: string) => deleteRole(roleId));
+  return useRoleMutation(({ roleId, reason }: { roleId: string; reason: string }) =>
+    deleteRole(roleId, reason),
+  );
 }
 
 /** An account's or a role's change history. Refreshed after every save in the panel. */

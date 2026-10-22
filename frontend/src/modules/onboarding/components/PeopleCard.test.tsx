@@ -35,6 +35,8 @@ const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111';
 const CONTACT: ExporterContact = {
   id: '22222222-2222-4222-8222-222222222222',
   customer_id: CUSTOMER_ID,
+  first_name: 'Front',
+  last_name: 'Desk',
   name: 'Front Desk',
   role: null,
   email: null,
@@ -56,6 +58,8 @@ const CONTACT: ExporterContact = {
 const RAVI_MASKED: ExporterContact = {
   ...CONTACT,
   id: '33333333-3333-4333-8333-333333333333',
+  first_name: 'Ravi',
+  last_name: 'Kumar',
   name: 'Ravi Kumar',
   is_contact: false,
   is_director: true,
@@ -101,7 +105,8 @@ describe('Directors and owners', () => {
     renderCard([]);
     fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
 
-    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Anita Rao' } });
+    fireEvent.change(screen.getByLabelText(/^First name/), { target: { value: 'Anita' } });
+    fireEvent.change(screen.getByLabelText(/^Last name/), { target: { value: 'Rao' } });
     fireEvent.click(screen.getByLabelText('Director'));
     fireEvent.click(screen.getByLabelText('Beneficial owner'));
     fireEvent.change(screen.getByLabelText('Ownership %'), { target: { value: '40' } });
@@ -111,7 +116,8 @@ describe('Directors and owners', () => {
     await waitFor(() => expect(addExporterContact).toHaveBeenCalled());
     const [, payload] = vi.mocked(addExporterContact).mock.calls[0]!;
     expect(payload).toMatchObject({
-      name: 'Anita Rao',
+      first_name: 'Anita',
+      last_name: 'Rao',
       is_contact: false,
       is_director: false,
       is_ubo: true,
@@ -129,12 +135,12 @@ describe('Directors and owners', () => {
 
     expect(screen.getByLabelText(/^DIN/)).toHaveValue('');
     expect(screen.getByLabelText('Number')).toHaveValue('');
-    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Ravi K. Kumar' } });
+    fireEvent.change(screen.getByLabelText(/^First name/), { target: { value: 'Ravi K.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save person' }));
 
     await waitFor(() =>
       expect(updateExporterContact).toHaveBeenCalledWith(CUSTOMER_ID, RAVI_MASKED.id, {
-        name: 'Ravi K. Kumar',
+        first_name: 'Ravi K.',
       }),
     );
   });

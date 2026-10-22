@@ -33,7 +33,7 @@ async def _contact(client: AsyncClient, token: str, **fields) -> tuple[uuid.UUID
     resp = await client.post(
         f"{BASE}/{customer_id}/contacts",
         headers=auth_header(token),
-        json={"name": "Jane Doe", **fields},
+        json={"first_name": "Jane", "last_name": "Doe", **fields},
     )
     assert resp.status_code == 201, resp.text
     return customer_id, resp.json()["id"]
@@ -258,7 +258,7 @@ def test_the_database_refuses_a_primary_contact_who_is_not_active():
             with pytest.raises(psycopg2.errors.CheckViolation) as raised:
                 cursor.execute(
                     "INSERT INTO onboarding.exporter_contact "
-                    "(id, customer_id, name, is_primary_contact, status) "
+                    "(id, customer_id, first_name, is_primary_contact, status) "
                     "VALUES (%s, %s, 'Gone', true, 'LEFT_COMPANY')",
                     (str(uuid.uuid4()), str(customer_id)),
                 )

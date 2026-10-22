@@ -97,6 +97,8 @@ export interface paths {
         /**
          * Create a custom role
          * @description A custom role can be assigned immediately. Every CRM route checks the permissions of the role an account holds, so a custom role's grants are exactly what its holders may do (the catalogue marks the one action not consulted yet).
+         *
+         *     `change_reason` is required — a ticket number, then an explanation — and is kept in the role's history.
          */
         post: operations["create_role_api_v1_auth_roles_post"];
         delete?: never;
@@ -121,6 +123,8 @@ export interface paths {
          * @description Refused for a built-in role: those back the account role values every unmigrated route still reads, so deleting one would leave its holders resolving to no permissions at all.
          *
          *     Also refused while any account still holds the role — reassign them first. Silently demoting people is a privilege change nobody asked for.
+         *
+         *     `change_reason` (a query parameter, as a DELETE has no body) is required — a ticket number, then an explanation — and is kept in the role's history.
          */
         delete: operations["delete_role_api_v1_auth_roles__role_id__delete"];
         options?: never;
@@ -130,6 +134,8 @@ export interface paths {
          * @description Built-in roles are editable, by decision — section 3.7 of the architecture plan describes their starting permissions, not a guarantee. `permissions`, when supplied, replaces the whole set.
          *
          *     One edit is refused: removing `roles:edit` from the role you yourself hold, because no one could grant it back afterwards.
+         *
+         *     `change_reason` is required — a ticket number, then an explanation — and is kept in the role's history.
          */
         patch: operations["update_role_api_v1_auth_roles__role_id__patch"];
         trace?: never;
@@ -655,6 +661,8 @@ export interface paths {
          *     `relationship_manager` narrows the list by owner: `me` (My companies), `none` (Unassigned), `inactive` (an RM whose account is deactivated) or a user id. It is a filter only: ownership never changes what a reader may see.
          *
          *     `missing_primary_contact=true` lists only companies with no active primary contact (each row carries `has_active_primary_contact`).
+         *
+         *     `sort` orders the list by `created_at` (when the company was added; the default), `updated_at` (when the company record itself last changed: an edit while paging can move a company between pages), `name` (ignoring case, unnamed companies last) or `stage` (Lead, Prospect, Customer); `order` is `desc` (the default) or `asc`. Ties fall back to when the company was added, then its id.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -876,7 +884,7 @@ export interface paths {
         head?: never;
         /**
          * Change a contact on an exporter relationship
-         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary. Roles change the same way: taking one away clears the fields that belong only to it, and taking away `is_contact` stops the person being the primary contact.
+         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `first_name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary. Roles change the same way: taking one away clears the fields that belong only to it, and taking away `is_contact` stops the person being the primary contact.
          */
         patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
         trace?: never;
@@ -1876,7 +1884,7 @@ export interface paths {
         };
         /**
          * Companies due a sanctions re-screen
-         * @description Companies screened before whose latest screening is out of date: a list has a newer version or became mandatory, the company's name changed, or a beneficial owner was never screened.
+         * @description Companies screened before whose latest screening is out of date: a list has a newer version or became mandatory, the company's name changed, or a beneficial owner was never screened. By company name, or with `order=newest` (or `oldest`) by when each company was last screened.
          */
         get: operations["list_rescreen_due_api_v1_onboarding_sanctions_rescreen_due_get"];
         put?: never;
@@ -2766,6 +2774,8 @@ export interface paths {
         /**
          * Companies due for Re-KYC
          * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused.
+         *
+         *     `order=newest` lists the latest expiry first instead — the Clear that most recently came due at the top, as Compliance work shows it.
          */
         get: operations["list_rekyc_due_api_v1_onboarding_background_check_due_get"];
         put?: never;
@@ -3185,6 +3195,8 @@ export interface components {
             actor_name: string | null;
             /** Changes */
             changes: components["schemas"]["AccessChangeResponse"][];
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /** AccessHistoryResponse */
         AccessHistoryResponse: {
@@ -3244,12 +3256,16 @@ export interface components {
         /**
          * AddExporterContactRequest
          * @description A person at the company: a contact (the default), a director, a beneficial owner,
-         *     or several at once. Only the name and a role are required; the person fields are
-         *     optional, and the director-only and owner-only ones need that role.
+         *     or several at once. Only the first name and a role are required; the last name is
+         *     optional, because plenty of people go by one name. The full ``name`` is never sent:
+         *     the database computes it from the two. The person fields are optional, and the
+         *     director-only and owner-only ones need that role.
          */
         AddExporterContactRequest: {
-            /** Name */
-            name: string;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name?: string | null;
             /** Role */
             role?: string | null;
             /** Email */
@@ -3326,6 +3342,12 @@ export interface components {
             kind: string;
             /** Days */
             days?: number | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /** AddSanctionsListRequest */
         AddSanctionsListRequest: {
@@ -3345,6 +3367,12 @@ export interface components {
              * Format: date
              */
             list_version_date: string;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * AdminCreateUserRequest
@@ -4720,6 +4748,11 @@ export interface components {
             true_match_approval: "SINGLE" | "SECOND_OFFICER" | "HEAD";
         };
         /**
+         * CompanySort
+         * @enum {string}
+         */
+        CompanySort: "created_at" | "updated_at" | "name" | "stage";
+        /**
          * CompanyTradeRole
          * @description Which side of a trade a company has actually been on. **A filter, never a
          *     column**: no table stores this, and none should.
@@ -5000,6 +5033,12 @@ export interface components {
             allowed_values?: string[] | null;
             /** Auto Source */
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
             /** Key */
             key: string;
         };
@@ -5072,6 +5111,12 @@ export interface components {
             description?: string | null;
             /** Permissions */
             permissions?: components["schemas"]["PermissionRef"][];
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * CriterionDefinitionRequest
@@ -5097,6 +5142,12 @@ export interface components {
             allowed_values?: string[] | null;
             /** Auto Source */
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * CriterionKind
@@ -5142,6 +5193,8 @@ export interface components {
             created_at: string;
             /** Auto Source */
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /**
          * CriterionResultValue
@@ -5302,6 +5355,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /**
          * DealRequiredDocumentsResponse
@@ -5974,6 +6029,10 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string | null;
             /** Name */
             name: string;
             /** Role */
@@ -7210,6 +7269,12 @@ export interface components {
             active: boolean;
             /** Is Current */
             is_current: boolean;
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /** PendingActivityListResponse */
         PendingActivityListResponse: {
@@ -7901,6 +7966,8 @@ export interface components {
             company_name: string | null;
             /** Reasons */
             reasons: string[];
+            /** Last Screened At */
+            last_screened_at?: string | null;
         };
         /**
          * ResultRequest
@@ -7977,6 +8044,12 @@ export interface components {
             days?: number | null;
             /** Active */
             active?: boolean | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * ReviseSanctionsListRequest
@@ -7994,6 +8067,12 @@ export interface components {
             mandatory?: boolean | null;
             /** List Version Date */
             list_version_date?: string | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /** RoleListResponse */
         RoleListResponse: {
@@ -8119,6 +8198,12 @@ export interface components {
             list_version_date: string;
             /** Is Current */
             is_current: boolean;
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /** SanctionsListsResponse */
         SanctionsListsResponse: {
@@ -8405,6 +8490,12 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * SetDealTermsRequest
@@ -8445,6 +8536,11 @@ export interface components {
             /** Relationship */
             relationship?: ("SUBSIDIARY" | "BRANCH_OFFICE" | "GROUP_COMPANY" | "JOINT_VENTURE") | null;
         };
+        /**
+         * SortOrder
+         * @enum {string}
+         */
+        SortOrder: "asc" | "desc";
         /** StaffListResponse */
         StaffListResponse: {
             /** Staff */
@@ -8846,14 +8942,17 @@ export interface components {
          *     were really in the body — a field left out is untouched, a field sent as ``null`` is
          *     cleared.
          *
-         *     ``name`` is the exception: it may be changed but not removed, because a contact with
-         *     no name is a row nobody can act on. ``ContactName`` refuses "" and a name of spaces;
-         *     ``_not_null`` refuses an explicit ``null``, which the type alone would
-         *     let through as "leave it alone" and so drop silently.
+         *     ``first_name`` is the exception: it may be changed but not removed, because a contact
+         *     with no name is a row nobody can act on. ``ContactName`` refuses "" and a name of
+         *     spaces; ``_not_null`` refuses an explicit ``null``, which the type alone would let
+         *     through as "leave it alone" and so drop silently. ``last_name`` may be cleared, with
+         *     ``null`` or an empty string.
          */
         UpdateExporterContactRequest: {
-            /** Name */
-            name?: string | null;
+            /** First Name */
+            first_name?: string | null;
+            /** Last Name */
+            last_name?: string | null;
             /** Role */
             role?: string | null;
             /** Email */
@@ -8965,6 +9064,12 @@ export interface components {
             permissions?: components["schemas"]["PermissionRef"][] | null;
             /** Is Assignable */
             is_assignable?: boolean | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /** UpdateScreeningReviewItemRequest */
         UpdateScreeningReviewItemRequest: {
@@ -9549,7 +9654,10 @@ export interface operations {
     };
     delete_role_api_v1_auth_roles__role_id__delete: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Why: a ticket number, then an explanation */
+                change_reason: string;
+            };
             header?: never;
             path: {
                 role_id: string;
@@ -11027,6 +11135,8 @@ export interface operations {
                 missing_primary_contact?: boolean;
                 /** @description `me` (My collections), `none` or a user id */
                 collections_owner?: string | null;
+                sort?: components["schemas"]["CompanySort"];
+                order?: components["schemas"]["SortOrder"];
                 limit?: number;
                 offset?: number;
             };
@@ -14810,6 +14920,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                order?: "name" | "newest" | "oldest";
             };
             header?: never;
             path?: never;
@@ -17208,6 +17319,8 @@ export interface operations {
                 awaiting?: "me" | null;
                 limit?: number;
                 offset?: number;
+                /** @description With `awaiting=me`: `oldest` (the default) lists the longest waiting first; `newest` the most recently proposed first. */
+                order?: "oldest" | "newest";
             };
             header?: never;
             path?: never;
@@ -17304,6 +17417,8 @@ export interface operations {
                 before?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description `oldest` (the default): expired first, then the soonest. */
+                order?: "oldest" | "newest";
             };
             header?: never;
             path?: never;

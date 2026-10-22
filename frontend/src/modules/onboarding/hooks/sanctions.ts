@@ -75,8 +75,12 @@ export function usePendingTrueMatches(enabled = true) {
   });
 }
 
-export function useRescreenDue(enabled = true) {
-  return useQuery({ queryKey: ['sanctions', 'rescreenDue'], queryFn: () => listRescreenDue(), enabled });
+export function useRescreenDue(enabled = true, order?: 'name' | 'newest' | 'oldest') {
+  return useQuery({
+    queryKey: ['sanctions', 'rescreenDue', order ?? null],
+    queryFn: () => listRescreenDue(order),
+    enabled,
+  });
 }
 
 function useRefresh(companyId: string) {

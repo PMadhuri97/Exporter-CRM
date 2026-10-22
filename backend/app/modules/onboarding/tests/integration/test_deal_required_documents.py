@@ -58,6 +58,8 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
 SETTINGS = f"{BASE}/settings/deal-required-documents"
+
+CHANGE_REASON = "CHG-1042: test change"
 PDF = b"%PDF-1.4 proforma invoice"
 
 
@@ -115,6 +117,7 @@ async def _restore_the_rule():
                 document_type=document_type or None,
                 active=active,
                 actor_id="test-teardown",
+                change_reason=CHANGE_REASON,
             )
 
 
@@ -254,6 +257,7 @@ async def test_removing_a_requirement_writes_a_version_rather_than_deleting():
             document_type=None,
             active=False,
             actor_id="admin-user",
+            change_reason=CHANGE_REASON,
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -291,6 +295,7 @@ async def test_a_requirement_can_be_added_back_as_a_later_version():
             document_type=None,
             active=False,
             actor_id="admin-user",
+            change_reason=CHANGE_REASON,
         )
     async with db_services.AsyncSessionLocal() as db:
         row = await DealRequiredDocumentsService(db).set_requirement(
@@ -298,6 +303,7 @@ async def test_a_requirement_can_be_added_back_as_a_later_version():
             document_type=None,
             active=True,
             actor_id="admin-user",
+            change_reason=CHANGE_REASON,
         )
     assert (row.version, row.active) == (was + 2, True)
 
@@ -313,6 +319,7 @@ async def test_a_company_category_cannot_be_required_of_a_deal():
                 document_type=None,
                 active=True,
                 actor_id="admin-user",
+                change_reason=CHANGE_REASON,
             )
     assert "not a deal" in str(caught.value)
 
@@ -327,6 +334,7 @@ async def test_a_change_that_changes_nothing_is_refused():
                 document_type=None,
                 active=True,
                 actor_id="admin-user",
+                change_reason=CHANGE_REASON,
             )
     assert "already required" in str(caught.value)
 
@@ -427,6 +435,7 @@ async def test_a_requirement_naming_a_type_needs_that_type(tmp_path: Path):
             document_type="bill_of_lading",
             active=True,
             actor_id="admin-user",
+            change_reason=CHANGE_REASON,
         )
 
     # A different type in the same category does not satisfy it.
@@ -455,6 +464,7 @@ async def test_no_requirements_means_nothing_is_missing():
             document_type=None,
             active=False,
             actor_id="admin-user",
+            change_reason=CHANGE_REASON,
         )
     assert await _missing(deal_id) == ()
 
@@ -549,6 +559,7 @@ async def test_a_deal_handed_over_before_the_rule_existed_is_not_re_judged(
             document_type=None,
             active=True,
             actor_id="admin-user",
+            change_reason=CHANGE_REASON,
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -600,7 +611,7 @@ async def test_admin_adds_and_removes_a_category_through_the_routes(
 
     added = await client.post(
         SETTINGS,
-        json={"category": "BUYER", "document_type": document_type},
+        json={"category": "BUYER", "document_type": document_type, "change_reason": CHANGE_REASON},
         headers=auth_header(admin),
     )
     assert added.status_code == 201, added.text
@@ -610,7 +621,12 @@ async def test_admin_adds_and_removes_a_category_through_the_routes(
 
     removed = await client.post(
         SETTINGS,
-        json={"category": "BUYER", "document_type": document_type, "active": False},
+        json={
+            "category": "BUYER",
+            "document_type": document_type,
+            "active": False,
+            "change_reason": CHANGE_REASON,
+        },
         headers=auth_header(admin),
     )
     assert removed.status_code == 201, removed.text
@@ -646,7 +662,7 @@ async def test_a_type_the_settings_do_not_configure_cannot_be_required(
 
     resp = await client.post(
         SETTINGS,
-        json={"category": category, "document_type": document_type},
+        json={"category": category, "document_type": document_type, "change_reason": CHANGE_REASON},
         headers=auth_header(admin),
     )
 
@@ -669,6 +685,7 @@ async def test_stopping_a_requirement_that_was_never_made_is_refused():
                 document_type=document_type,
                 active=False,
                 actor_id="admin-user",
+                change_reason=CHANGE_REASON,
             )
 
     assert "already not required" in str(caught.value)
@@ -691,7 +708,8 @@ async def test_two_administrators_changing_one_requirement_at_once(
 
     async with db_services.AsyncSessionLocal() as db:
         first = await DealRequiredDocumentsService(db).set_requirement(
-            category=category, document_type=document_type, active=True, actor_id="first"
+            category=category, document_type=document_type, active=True, actor_id="first",
+            change_reason=CHANGE_REASON,
         )
     assert first.version == was + 1
 
@@ -704,7 +722,8 @@ async def test_two_administrators_changing_one_requirement_at_once(
         monkeypatch.setattr(second, "current", _as_it_was)
         with pytest.raises(DealRequiredDocumentChangedError) as caught:
             await second.set_requirement(
-                category=category, document_type=document_type, active=True, actor_id="second"
+                category=category, document_type=document_type, active=True, actor_id="second",
+                change_reason=CHANGE_REASON,
             )
 
     assert caught.value.status_code == 409
@@ -721,7 +740,7 @@ async def test_two_administrators_changing_one_requirement_at_once(
 async def test_a_company_only_category_is_refused_by_the_route(client: AsyncClient):
     admin = await token_with_role(client, UserRole.ADMIN)
     resp = await client.post(
-        SETTINGS, json={"category": "ENTITY_KYC"}, headers=auth_header(admin)
+        SETTINGS, json={"category": "ENTITY_KYC", "change_reason": CHANGE_REASON}, headers=auth_header(admin)
     )
     assert resp.status_code == 422, resp.text
 

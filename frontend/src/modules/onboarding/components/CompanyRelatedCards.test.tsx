@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,7 +15,7 @@ import type { UserRole } from '@/lib/api/types';
 import { useCanRevealIdentifiersOnce } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
-import { setExporterContactStatus, updateExporterContact } from '../api';
+import { addExporterContact, setExporterContactStatus, updateExporterContact } from '../api';
 import type { ExporterContact } from '../types';
 
 import { CompanyRelatedCards } from './CompanyRelatedCards';
@@ -30,6 +30,7 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
 }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
+  addExporterContact: vi.fn(),
   updateExporterContact: vi.fn(),
   setExporterContactStatus: vi.fn(),
 }));
@@ -50,6 +51,8 @@ const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111';
 const JANE: ExporterContact = {
   id: '22222222-2222-4222-8222-222222222222',
   customer_id: CUSTOMER_ID,
+  first_name: 'Jane',
+  last_name: 'Doe',
   name: 'Jane Doe',
   role: 'CFO',
   email: 'jane.doe@example.com',
@@ -71,6 +74,8 @@ const JANE: ExporterContact = {
 const RAVI: ExporterContact = {
   ...JANE,
   id: '33333333-3333-4333-8333-333333333333',
+  first_name: 'Ravi',
+  last_name: 'Kumar',
   name: 'Ravi Kumar',
   status: 'LEFT_COMPANY',
   status_reason: 'Moved to another firm',
@@ -116,6 +121,51 @@ beforeEach(() => {
     ...JANE,
     ...payload,
   }) as ExporterContact);
+});
+
+/** The Contacts card's own Add: the Directors and owners card beside it has one too. */
+function openAddContact() {
+  const card = document.querySelector<HTMLElement>('[data-extension="contacts"]')!;
+  fireEvent.click(within(card).getByRole('button', { name: /Add/ }));
+}
+
+describe('Adding a contact', () => {
+  it('asks for the first and last name separately', async () => {
+    as('OPERATIONS');
+    vi.mocked(addExporterContact).mockResolvedValue(JANE);
+    renderCards([]);
+    openAddContact();
+
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    change(/^First name/, ' Priya ');
+    change(/^Last name/, ' Nair ');
+    fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
+
+    await waitFor(() =>
+      expect(addExporterContact).toHaveBeenCalledWith(
+        CUSTOMER_ID,
+        expect.objectContaining({ first_name: 'Priya', last_name: 'Nair' }),
+      ),
+    );
+  });
+
+  it('accepts a contact with no last name', async () => {
+    as('OPERATIONS');
+    vi.mocked(addExporterContact).mockResolvedValue(JANE);
+    renderCards([]);
+    openAddContact();
+
+    expect(screen.getByRole('button', { name: 'Add contact' })).toBeDisabled();
+    change(/^First name/, 'Madhuri');
+    fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
+
+    await waitFor(() =>
+      expect(addExporterContact).toHaveBeenCalledWith(
+        CUSTOMER_ID,
+        expect.objectContaining({ first_name: 'Madhuri', last_name: null }),
+      ),
+    );
+  });
 });
 
 describe('Editing a contact', () => {
@@ -203,14 +253,31 @@ describe('Editing a contact', () => {
     );
   });
 
-  it('will not save a contact with no name', () => {
+  it('will not save a contact with no first name', () => {
     as('COMPLIANCE');
     renderCards(JANE);
     openEdit();
 
-    change(/^Name/, '   ');
+    change(/^First name/, '   ');
 
     expect(screen.getByRole('button', { name: 'Save contact' })).toBeDisabled();
+  });
+
+  it('sends the first and last name separately, and clears an emptied last name', async () => {
+    as('COMPLIANCE');
+    renderCards(JANE);
+    openEdit();
+
+    change(/^First name/, ' Janet ');
+    change(/^Last name/, '  ');
+    save();
+
+    await waitFor(() =>
+      expect(updateExporterContact).toHaveBeenCalledWith(CUSTOMER_ID, JANE.id, {
+        first_name: 'Janet',
+        last_name: null,
+      }),
+    );
   });
 });
 

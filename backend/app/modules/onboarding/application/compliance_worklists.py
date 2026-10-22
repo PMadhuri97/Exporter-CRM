@@ -465,10 +465,10 @@ class ComplianceWorklists:
             if item.stage == "approval"
         }
 
-    async def approvable_by(self, viewer_id: str) -> list[WorkItem]:
+    async def approvable_by(self, viewer_id: str, *, newest_first: bool = False) -> list[WorkItem]:
         """Every proposal awaiting approval that ``viewer_id`` may approve, longest
-        waiting first — the "awaiting me" queue, from the same rule as
-        :meth:`may_approve`, with no cap."""
+        waiting first (``newest_first``: most recent first) — the "awaiting me" queue,
+        from the same rule as :meth:`may_approve`, with no cap."""
         return sorted(
             (
                 item
@@ -476,6 +476,7 @@ class ComplianceWorklists:
                 if self.may_approve(item, viewer_id=viewer_id)
             ),
             key=lambda item: (item.waiting_since, str(item.proposal_id)),
+            reverse=newest_first,
         )
 
     # ── Decisions on my companies ───────────────────────────────────────────

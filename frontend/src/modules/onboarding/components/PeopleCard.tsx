@@ -3,7 +3,7 @@
  *
  * A person is one record with roles — a contact, a director, a beneficial owner, or
  * several — so a director who is also the main contact appears here and under Contacts
- * as the same person. Only the name and a role are required. A DIN belongs to a
+ * as the same person. Only the first name and a role are required. A DIN belongs to a
  * director, an ownership share and control type to an owner; date of birth, DIN and the
  * identification number arrive masked for a role that may not see them, and are typed
  * over, never edited in place (the same rule the contact form follows for email).
@@ -56,7 +56,8 @@ const IDENTIFICATION_LABEL = {
 type IdentificationType = keyof typeof IDENTIFICATION_LABEL;
 
 interface PersonForm {
-  name: string;
+  first_name: string;
+  last_name: string;
   is_director: boolean;
   is_ubo: boolean;
   is_contact: boolean;
@@ -71,7 +72,8 @@ interface PersonForm {
 }
 
 const EMPTY: PersonForm = {
-  name: '',
+  first_name: '',
+  last_name: '',
   is_director: true,
   is_ubo: false,
   is_contact: false,
@@ -89,7 +91,7 @@ const text = (value: string) => value.trim() || null;
 
 /** Why the form cannot be sent yet, or null when it can. The server says the same. */
 function problem(form: PersonForm, numberRequired: boolean): string | null {
-  if (!form.name.trim()) return 'Give the person a name.';
+  if (!form.first_name.trim()) return 'Give the person a first name.';
   if (!form.is_director && !form.is_ubo) return 'Choose director, beneficial owner, or both.';
   if (form.is_director && form.din.trim() && !/^[0-9]{8}$/.test(form.din.trim())) {
     return 'A DIN is eight digits.';
@@ -132,9 +134,24 @@ function PersonFields({
   );
   return (
     <>
-      <Field label="Name" htmlFor="person-name" required>
-        <Input id="person-name" value={form.name} onChange={(event) => set('name', event.target.value)} />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="First name" htmlFor="person-first-name" required>
+          <Input
+            id="person-first-name"
+            value={form.first_name}
+            maxLength={120}
+            onChange={(event) => set('first_name', event.target.value)}
+          />
+        </Field>
+        <Field label="Last name" htmlFor="person-last-name">
+          <Input
+            id="person-last-name"
+            value={form.last_name}
+            maxLength={120}
+            onChange={(event) => set('last_name', event.target.value)}
+          />
+        </Field>
+      </div>
       <fieldset className="space-y-1.5">
         <legend className="text-caption font-medium text-ink-2">Roles</legend>
         {role('is_director', 'Director')}
@@ -242,7 +259,8 @@ function AddPersonForm({ customerId, onDone }: { customerId: string; onDone: () 
     event.preventDefault();
     if (blocked) return;
     const payload: AddExporterContactRequest = {
-      name: form.name.trim(),
+      first_name: form.first_name.trim(),
+      last_name: text(form.last_name),
       role: null,
       email: null,
       phone: null,
@@ -273,7 +291,7 @@ function AddPersonForm({ customerId, onDone }: { customerId: string; onDone: () 
     <form onSubmit={submit} className="space-y-4">
       <RequiredNote />
       <PersonFields form={form} setForm={setForm} hidden={false} />
-      {blocked && form.name.trim() && <p className="text-secondary text-ink-3">{blocked}</p>}
+      {blocked && form.first_name.trim() && <p className="text-secondary text-ink-3">{blocked}</p>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={Boolean(blocked)} loading={mutation.isPending}>
@@ -307,7 +325,8 @@ function EditPersonForm({
   const mayReveal = useCanRevealIdentifiersOnce();
   const masked = (value: string | null | undefined) => (mayReveal ? (value ?? '') : '');
   const [form, setForm] = useState<PersonForm>({
-    name: person.name,
+    first_name: person.first_name,
+    last_name: person.last_name ?? '',
     is_director: person.is_director,
     is_ubo: person.is_ubo,
     is_contact: person.is_contact,
@@ -327,7 +346,8 @@ function EditPersonForm({
     event.preventDefault();
     if (blocked) return;
     const payload: UpdateExporterContactRequest = {};
-    if (form.name.trim() !== person.name) payload.name = form.name.trim();
+    if (form.first_name.trim() !== person.first_name) payload.first_name = form.first_name.trim();
+    if (text(form.last_name) !== (person.last_name ?? null)) payload.last_name = text(form.last_name);
     if (form.is_director !== person.is_director) payload.is_director = form.is_director;
     if (form.is_ubo !== person.is_ubo) payload.is_ubo = form.is_ubo;
     if (form.is_contact !== person.is_contact) payload.is_contact = form.is_contact;

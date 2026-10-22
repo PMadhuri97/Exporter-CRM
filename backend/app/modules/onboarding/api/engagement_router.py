@@ -106,7 +106,8 @@ async def add_exporter_contact(
     service = ExporterContactActivityService(db)
     contact = await service.add_contact(
         customer_id,
-        name=body.name,
+        first_name=body.first_name,
+        last_name=body.last_name,
         role=body.role,
         email=body.email,
         phone=body.phone,
@@ -127,7 +128,7 @@ async def add_exporter_contact(
     summary="Change a contact on an exporter relationship",
     description=(
         "A partial edit: only the fields present in the body change. A field sent as "
-        "null is cleared; a field left out is untouched. `name` and `is_primary` may "
+        "null is cleared; a field left out is untouched. `first_name` and `is_primary` may "
         "be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this "
         "customer in the same transaction — never two primaries at once; setting it "
         "false is allowed and leaves the company with no primary. Roles change the same "

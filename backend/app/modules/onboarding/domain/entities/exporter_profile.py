@@ -141,6 +141,12 @@ class ExporterProfile(AnerModel):
         Index("ix_exporter_profile_qualification", "qualification"),  # 0017
         Index("ix_exporter_profile_background_check", "background_check"),  # 0015
         Index("ix_exporter_profile_collections_owner", "collections_owner_user_id"),  # 0050
+        # 0064: the Companies list's chosen sorts (`domain/list_sort.py`) — most recently
+        # updated first, and by name with case ignored.
+        Index(
+            "ix_exporter_profile_updated_at", text("updated_at DESC"), text("customer_id DESC")
+        ),
+        Index("ix_exporter_profile_name_lower", text("lower(name)")),
         # Parent and child companies (0051): set together, never one's own parent;
         # `trg_exporter_profile_no_group_cycle` refuses a loop.
         Index("ix_exporter_profile_parent_company", "parent_company_id"),

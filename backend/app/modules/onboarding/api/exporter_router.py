@@ -74,6 +74,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
+from app.modules.onboarding.domain.list_sort import CompanySort, SortOrder
 from app.modules.onboarding.exceptions import (
     BackgroundCheckFilterNotPermittedError,
     IdentifierSearchNotPermittedError,
@@ -359,7 +360,12 @@ async def update_exporter_profile(
         "`none` (Unassigned), `inactive` (an RM whose account is deactivated) or a "
         "user id. It is a filter only: ownership never changes what a reader may see.\n\n"
         "`missing_primary_contact=true` lists only companies with no active primary "
-        "contact (each row carries `has_active_primary_contact`)."
+        "contact (each row carries `has_active_primary_contact`).\n\n"
+        "`sort` orders the list by `created_at` (when the company was added; the "
+        "default), `updated_at` (when the company record itself last changed: an edit "
+        "while paging can move a company between pages), `name` (ignoring case, unnamed "
+        "companies last) or `stage` (Lead, Prospect, Customer); `order` is `desc` (the "
+        "default) or `asc`. Ties fall back to when the company was added, then its id."
     ),
     responses={
         200: {"model": ExporterProfileSearchResponse},
@@ -414,6 +420,8 @@ async def search_exporter_profiles(
     collections_owner: str | None = Query(
         default=None, description="`me` (My collections), `none` or a user id"
     ),
+    sort: CompanySort = Query(default=CompanySort.CREATED_AT),
+    order: SortOrder = Query(default=SortOrder.DESC),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
@@ -459,7 +467,9 @@ async def search_exporter_profiles(
     }
 
     service = ExporterProfileService(db)
-    items = await service.search_profiles(**selection, limit=limit, offset=offset)
+    items = await service.search_profiles(
+        **selection, sort=sort, order=order, limit=limit, offset=offset
+    )
     profiles = [
         ExporterProfileListItemResponse.model_validate(item).masked_for(current_user)
         for item in items

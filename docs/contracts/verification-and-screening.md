@@ -35,6 +35,19 @@
 > Compliance work lists (a newer list version, a company renamed since, an unscreened
 > beneficial owner). History dimension `sanctions`.
 >
+> **Amendment, 19 October 2026 — every sanctions list change says why (migration 0063).**
+> `POST /settings/sanctions-lists` and `PATCH /settings/sanctions-lists/{code}` (stopping
+> and resuming a list included) **require** `change_reason`; each list version returned
+> carries `change_reason`, `created_by` and `created_at`.
+> `change_reason` is a **ticket number in capitals, then an explanation**: `CHG-1042` (or
+> a ServiceNow-style `CHG0031234`) first, then `:`, a dash or a space, then at least two
+> real words (two or more Latin letters each) and ten characters —
+> `CHG-1042: raise the turnover floor`. Missing, blank, `chg-7`, `CHG-7` alone or a
+> description with no ticket is a 422 on `change_reason`, and nothing is written. The
+> reason is trimmed, its spaces collapsed, and kept on the version written; versions
+> written before 0063 (and the seeded ones) read `null`. The rule is
+> `domain/change_reason.py`.
+
 > **Amendment, 14 October 2026 — people as subjects (migration 0057).** The directors and
 > beneficial owners on record are the company's people (`exporter_contact`, see
 > `company-record.md`). Every active one is a subject of the coverage and of Re-screen
