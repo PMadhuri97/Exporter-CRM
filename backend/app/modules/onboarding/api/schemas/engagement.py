@@ -39,6 +39,10 @@ from app.modules.onboarding.api.schemas.masking import (
     mask_phone,
 )
 from app.modules.onboarding.domain.contact_phone import open_phone
+from app.modules.onboarding.domain.contact_privacy import (
+    open_date_of_birth,
+    open_email,
+)
 from app.modules.onboarding.domain.engagement_views import ConversationView
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ContactStatus,
@@ -53,6 +57,7 @@ from app.platform.security.field_cipher import (
     FieldDecryptionError,
     decrypt_field,
     is_deterministic_ciphertext,
+    is_random_ciphertext,
 )
 
 #: A contact's name, trimmed before it is measured: "   " is not a name, and without the
@@ -213,8 +218,10 @@ class ExporterContactResponse(BaseModel):
     identification_encrypted: str | None = Field(default=None, exclude=True)
     identification_last4: str | None = Field(default=None, exclude=True)
     #: The phone column as stored, kept so `masked_for` can reveal after
-    #: `_phone_never_ciphertext` has masked the public field. Never serialised.
+    #: `_sealed_values_never_served` has masked the public fields. Never serialised.
     _sealed_phone: str | None = PrivateAttr(default=None)
+    _sealed_email: str | None = PrivateAttr(default=None)
+    _sealed_dob: str | None = PrivateAttr(default=None)
 
     @field_validator("date_of_birth", mode="before")
     @classmethod
@@ -230,24 +237,35 @@ class ExporterContactResponse(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _phone_never_ciphertext(self) -> ExporterContactResponse:
+    def _sealed_values_never_served(self) -> ExporterContactResponse:
         """Fail closed, as the identification number does.
 
-        ``exporter_contact.phone`` holds a ciphertext, and a response built without
-        ``masked_for`` would otherwise serve it raw — a leak of nothing secret, but a
-        field nobody can dial and a value no client should ever see. Masked here, so
-        every path starts masked and only ``masked_for`` reveals.
+        ``phone``, ``email`` and ``date_of_birth`` hold ciphertexts, and a response
+        built without ``masked_for`` would otherwise serve them raw — nothing secret
+        escapes, but they are values no client can use and none should ever see.
+        Masked here, so every path starts masked and only ``masked_for`` reveals.
 
-        A phone that cannot be decrypted is emptied rather than passed on: a stored
-        value that will not open is a broken row, not a number.
+        Each sealed value is kept privately, because the response is built once and may
+        be revealed afterwards. One that will not decrypt is emptied rather than passed
+        on: a stored value no key opens is a broken row, not a contact detail.
         """
-        if not is_deterministic_ciphertext(self.phone):
-            return self
-        self._sealed_phone = self.phone
-        try:
-            self.phone = mask_phone(open_phone(self._sealed_phone))
-        except FieldDecryptionError:
-            self.phone = None
+        if is_deterministic_ciphertext(self.phone):
+            self._sealed_phone = self.phone
+            try:
+                self.phone = mask_phone(open_phone(self._sealed_phone))
+            except FieldDecryptionError:
+                self.phone = None
+        if is_deterministic_ciphertext(self.email):
+            self._sealed_email = self.email
+            try:
+                self.email = mask_email(open_email(self._sealed_email))
+            except FieldDecryptionError:
+                self.email = None
+        if is_random_ciphertext(self.date_of_birth):
+            self._sealed_dob = self.date_of_birth
+            # Masked to the fixed `MASKED_DATE`, which says "there is one" and nothing
+            # more — so this never needs the key to render a masked response.
+            self.date_of_birth = MASKED_DATE
         return self
 
     @computed_field  # type: ignore[prop-decorator]
@@ -282,11 +300,17 @@ class ExporterContactResponse(BaseModel):
             # `_phone_never_ciphertext` has already masked it; revealing means going
             # back to the column. Held on the model for exactly this, because the
             # response is built once and may be revealed afterwards.
-            if self._sealed_phone is not None:
+            for field, sealed, opener in (
+                ("phone", self._sealed_phone, open_phone),
+                ("email", self._sealed_email, open_email),
+                ("date_of_birth", self._sealed_dob, open_date_of_birth),
+            ):
+                if sealed is None:
+                    continue
                 try:
-                    update["phone"] = open_phone(self._sealed_phone)
+                    update[field] = opener(sealed)
                 except FieldDecryptionError:
-                    update["phone"] = None
+                    update[field] = None
             if self.identification_encrypted is not None:
                 update["identification_number"] = decrypt_field(
                     self.identification_encrypted, purpose=IDENTIFICATION_PURPOSE

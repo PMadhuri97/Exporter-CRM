@@ -198,6 +198,16 @@ def decrypt_deterministic(stored: str, *, purpose: str) -> str:
         raise FieldDecryptionError(key_id) from exc
 
 
+def is_random_ciphertext(value: str | None) -> bool:
+    """Whether ``value`` was written by :func:`encrypt_field`.
+
+    The counterpart of :func:`is_deterministic_ciphertext`, for a column sealed with a
+    random nonce: it lets a read path tell a sealed value from one written before the
+    column was sealed, and stops a re-save sealing a ciphertext a second time.
+    """
+    return bool(value) and value.startswith(f"{_VERSION}.")
+
+
 def is_deterministic_ciphertext(value: str | None) -> bool:
     """Whether ``value`` was written by :func:`encrypt_deterministic`.
 
@@ -218,4 +228,5 @@ __all__ = [
     "encrypt_deterministic",
     "encrypt_field",
     "is_deterministic_ciphertext",
+    "is_random_ciphertext",
 ]

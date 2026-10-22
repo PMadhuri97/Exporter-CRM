@@ -44,13 +44,12 @@ reached in normal operation.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
-    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -152,7 +151,10 @@ class ExporterContact(AnerModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: **Encrypted** (AES-SIV, ``contact_privacy.EMAIL_PURPOSE``), holding the trimmed,
+    #: lower-cased address rather than what was typed. Deterministic so the column can
+    #: still be compared; 512 to fit the ciphertext.
+    email: Mapped[str | None] = mapped_column(String(512), nullable=True)
     #: **Encrypted** (AES-SIV, ``contact_phone.PHONE_PURPOSE``), holding the canonical
     #: spelling from ``normalise_phone`` rather than the characters anybody typed.
     #: Deterministic so the column can still be compared; 512 to fit the ciphertext.
@@ -181,7 +183,12 @@ class ExporterContact(AnerModel):
     is_ubo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
     # ── Person fields; all optional ──────────────────────────────────────────
-    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: **Encrypted** (AES-GCM, ``contact_privacy.DATE_OF_BIRTH_PURPOSE``), holding the
+    #: ISO form. Text rather than ``Date`` because a ciphertext is text: the database no
+    #: longer knows this is a date, so ordering and age arithmetic happen after
+    #: decrypting. A random nonce, not the deterministic seal `email` and `phone` use —
+    #: nothing compares a date of birth, so it leaks not even a shared birthday.
+    date_of_birth: Mapped[str | None] = mapped_column(String(512), nullable=True)
     #: ISO-3166-1 alpha-2.
     nationality: Mapped[str | None] = mapped_column(String(2), nullable=True)
     residence_country: Mapped[str | None] = mapped_column(String(2), nullable=True)

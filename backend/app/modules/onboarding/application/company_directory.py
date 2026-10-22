@@ -65,6 +65,7 @@ from app.modules.onboarding.domain.company_directory import (
 from app.modules.onboarding.domain.company_identity import CreatedVia
 from app.modules.onboarding.domain.company_names import name_key
 from app.modules.onboarding.domain.contact_phone import seal_phone
+from app.modules.onboarding.domain.contact_privacy import seal_email
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
@@ -472,7 +473,7 @@ def buyer_contact(
         customer_id=company_id,
         name=name,
         role=BUYER_CONTACT_ROLE,
-        email=(email or "").strip() or None,
+        email=seal_email(email),
         phone=seal_phone(phone),
         is_primary_contact=False,
     )

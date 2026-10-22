@@ -39,6 +39,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions, people
 from app.modules.onboarding.domain.contact_phone import seal_phone
+from app.modules.onboarding.domain.contact_privacy import (
+    seal_date_of_birth,
+    seal_email,
+)
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ContactStatus,
@@ -135,14 +139,21 @@ class ExporterContactActivityService:
             customer_id=customer_id,
             name=name,
             role=role,
-            email=email,
+            email=seal_email(email),
             phone=seal_phone(phone),
             department=department,
             is_primary_contact=is_primary,
             is_contact=is_contact,
             is_director=is_director,
             is_ubo=is_ubo,
-            **{field: fields.get(field) for field in people.PERSON_FIELDS},
+            **{
+                field: (
+                    seal_date_of_birth(fields.get(field))
+                    if field == "date_of_birth"
+                    else fields.get(field)
+                )
+                for field in people.PERSON_FIELDS
+            },
         )
         if number:
             set_identification_number(contact, str(number))
@@ -210,6 +221,10 @@ class ExporterContactActivityService:
         # that was typed. Absent means "leave it alone"; present and null clears it.
         if "phone" in fields:
             fields["phone"] = seal_phone(fields["phone"])
+        if "email" in fields:
+            fields["email"] = seal_email(fields["email"])
+        if "date_of_birth" in fields:
+            fields["date_of_birth"] = seal_date_of_birth(fields["date_of_birth"])
         promote = fields.pop("is_primary", None)
         number_sent = "identification_number" in fields
         number = fields.pop("identification_number", None)
