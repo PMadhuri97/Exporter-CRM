@@ -1,3 +1,2 @@
-export { canReveal, maskIdentifier, maskTail } from './maskIdentifier';
-export type { MaskContext } from './maskIdentifier';
+export { maskTail } from './maskIdentifier';
 export { Identifier } from './Identifier';

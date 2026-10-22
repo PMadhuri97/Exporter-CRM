@@ -17,6 +17,7 @@ import { ShellProvider } from '@/platform/shell';
 import {
   listComplianceWork,
   listOpenProposals,
+  listProposalsIReviewed,
   listReKycDue,
 } from '../api';
 import type { BackgroundCheckProposal, ComplianceWorkItem, ComplianceWorkView } from '../types';
@@ -25,6 +26,7 @@ import { ApprovalsPage } from './ApprovalsPage';
 
 vi.mock('../api', () => ({
   listOpenProposals: vi.fn(),
+  listProposalsIReviewed: vi.fn(),
   listReKycDue: vi.fn(),
   listComplianceWork: vi.fn(),
   claimBackgroundCheckReview: vi.fn(),
@@ -42,6 +44,11 @@ vi.mock('./panels/BackgroundCheckPanel', () => ({
 vi.mock('@/platform/access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/access')>()),
   useHasPermission: vi.fn(),
+}));
+// The page reads the signed-in id to say which half of maker-checker this officer was.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(() => ({ id: 'me', email: 'me@aner.example', role: 'COMPLIANCE' })),
 }));
 
 const PROPOSAL = {
@@ -130,6 +137,12 @@ beforeEach(() => {
     total: WORK[view].length,
   }));
   vi.mocked(listOpenProposals).mockResolvedValue({ proposals: [PROPOSAL], total: 1, limit: 50, offset: 0 } as never);
+  vi.mocked(listProposalsIReviewed).mockResolvedValue({
+    proposals: [],
+    total: 0,
+    limit: 50,
+    offset: 0,
+  } as never);
   vi.mocked(listReKycDue).mockResolvedValue({
     companies: [
       {
@@ -283,3 +296,158 @@ describe('Compliance work — newest first', () => {
   });
 });
 
+describe('Compliance work — Reviewed', () => {
+  /** A proposal as the reviewed listing returns it. */
+  const reviewed = (overrides: Record<string, unknown>) =>
+    ({
+      id: 'r1',
+      company_id: 'company-r',
+      company_name: 'Reviewed Co',
+      to_value: 'CLEAR',
+      risk_rating: null,
+      status: 'OPEN',
+      proposed_by: 'me',
+      proposed_by_name: 'Me',
+      proposed_at: '2026-10-01T09:00:00Z',
+      resolved_by: null,
+      resolved_by_name: null,
+      resolved_at: null,
+      ...overrides,
+    }) as unknown as BackgroundCheckProposal;
+
+  const open = async (rows: BackgroundCheckProposal[]) => {
+    vi.mocked(listProposalsIReviewed).mockResolvedValue({
+      proposals: rows,
+      total: rows.length,
+      limit: 50,
+      offset: 0,
+    } as never);
+    renderPage('/review?tab=reviewed');
+    // The name appears on the row and again as the chosen company's heading.
+    return screen.findAllByText('Reviewed Co');
+  };
+
+  it('says what became of a proposal this officer made', async () => {
+    await open([
+      reviewed({
+        status: 'APPROVED',
+        resolved_by: 'checker',
+        resolved_by_name: 'A Checker',
+        resolved_at: '2026-10-02T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/You proposed/)).toBeInTheDocument();
+    expect(screen.getByText(/approved by A Checker/)).toBeInTheDocument();
+  });
+
+  it('marks one still waiting rather than leaving it out', async () => {
+    // The proposal an officer is waiting on is the one they look for.
+    await open([reviewed({ status: 'OPEN' })]);
+
+    expect(screen.getByText(/awaiting approval/)).toBeInTheDocument();
+  });
+
+  it('says what this officer did to somebody else’s proposal', async () => {
+    await open([
+      reviewed({
+        proposed_by: 'someone-else',
+        proposed_by_name: 'A Maker',
+        status: 'REJECTED',
+        resolved_by: 'me',
+        resolved_by_name: 'Me',
+        resolved_at: '2026-10-03T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/You rejected/)).toBeInTheDocument();
+    expect(screen.getByText(/proposed by A Maker/)).toBeInTheDocument();
+  });
+
+  it('reads a withdrawal as a sentence, not as the status', async () => {
+    // `WITHDRAWN`.toLowerCase() gave "You withdrawn Clear".
+    await open([
+      reviewed({
+        proposed_by: 'someone-else',
+        proposed_by_name: 'A Maker',
+        status: 'WITHDRAWN',
+        resolved_by: 'me',
+        resolved_by_name: 'Me',
+        resolved_at: '2026-10-04T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/You withdrew/)).toBeInTheDocument();
+    expect(screen.queryByText(/You withdrawn/)).not.toBeInTheDocument();
+  });
+
+  it('reads an officer withdrawing their own proposal without naming them twice', async () => {
+    // The ordinary case — a proposal is the proposer's to withdraw — and the one the
+    // test above does not cover, because there a lead withdrew somebody else's.
+    // "withdrew by" is the active verb in a passive sentence; it read
+    // "You proposed Clear · withdrew by Me".
+    await open([
+      reviewed({
+        proposed_by: 'me',
+        proposed_by_name: 'Me',
+        status: 'WITHDRAWN',
+        resolved_by: 'me',
+        resolved_by_name: 'Me',
+        resolved_at: '2026-10-04T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/You proposed .* · you withdrew it/)).toBeInTheDocument();
+    expect(screen.queryByText(/withdrew by/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/withdrawn by Me/)).not.toBeInTheDocument();
+  });
+
+  it('names the other officer when somebody else resolved the proposal', async () => {
+    // The passive form still has to be the participle.
+    await open([
+      reviewed({
+        proposed_by: 'me',
+        proposed_by_name: 'Me',
+        status: 'WITHDRAWN',
+        resolved_by: 'a-lead',
+        resolved_by_name: 'A Lead',
+        resolved_at: '2026-10-04T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/withdrawn by A Lead/)).toBeInTheDocument();
+    expect(screen.queryByText(/withdrew by/)).not.toBeInTheDocument();
+  });
+
+  it('draws one row per company, however many proposals it has', async () => {
+    // Two rows shared a company id: both highlighted together, and React warned.
+    await open([
+      reviewed({ id: 'r1', status: 'APPROVED', resolved_at: '2026-10-02T09:00:00Z' }),
+      reviewed({ id: 'r2', status: 'REJECTED', resolved_at: '2026-10-01T09:00:00Z' }),
+    ]);
+
+    expect(screen.getAllByText('Reviewed Co')).toHaveLength(2); // the row and the heading
+  });
+
+  it('carries no count, since a record only ever grows', async () => {
+    await open([reviewed({})]);
+
+    // `Segmented` renders its options as radios, as the other tab tests read them.
+    const tab = screen.getByRole('radio', { name: /Reviewed/ });
+    expect(tab.textContent?.replace('Reviewed', '').trim()).toBe('');
+  });
+
+  it('says so plainly when the period holds nothing', async () => {
+    vi.mocked(listProposalsIReviewed).mockResolvedValue({
+      proposals: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    } as never);
+    renderPage('/review?tab=reviewed');
+
+    expect(
+      await screen.findByText(/have not proposed or decided anything/),
+    ).toBeInTheDocument();
+  });
+});

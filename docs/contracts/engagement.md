@@ -284,6 +284,20 @@ counting the same set. The Follow-ups screen's Overdue tab uses it, so a company
 parked until next quarter is not listed beside work that is late; the All tab still
 shows every parked company.
 
+**The days ahead (19 October 2026).** `check_backs_due_within_days` (0–30, default 0)
+widens that window forward, so a check-back can be seen coming rather than only on the
+morning it is due. It is **ignored unless `check_backs_due_only` is true**, and it
+changes only which companies are listed — never whether one reads as overdue, which
+stays "due on or before today". `check_backs_total` counts the widened set, so the card
+and its count agree.
+
+Home's **Check back on** card asks for **3** days (`CHECK_BACK_LOOKAHEAD_DAYS` in
+`components/home/HomeCards.tsx`) and for 50 rows, shows five and scrolls to the rest —
+the count beside the title is the server's total, and when the card holds fewer it says
+"Showing N of M" rather than let the two numbers quietly disagree. Its empty line names
+the window it looked at ("No check-backs due in the next 3 days"), so an empty card is
+not read as "nothing is parked".
+
 **Who logged it, by name.** An activity (`GET`/`POST …/activities`, and the company
 detail's `recent_activities`) and a follow-up row (`GET /onboarding/follow-ups`) carry
 `actor_name` beside `actor_id`: the account's full name, or its email when it has none —

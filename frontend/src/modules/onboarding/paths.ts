@@ -42,7 +42,11 @@ export const paths = {
       : `/companies/${customerId}`,
   /** Every deal, across companies. */
   deals: '/deals',
-  /** The Deals page with *New deal* open, so a link anywhere can start one. */
+  /**
+   * The Deals page with *New deal* open. The `?new=1` route is still read, so an
+   * existing link keeps working; nothing in the app points here now that the header's
+   * quick-create menu has gone and the Deals page opens the panel itself.
+   */
   newDeal: '/deals?new=1',
   deal: (dealId: string) => `/deals/${dealId}`,
   /** Companies as a board of three journey columns. */

@@ -10,6 +10,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UserRole } from '@/lib/api/types';
+import { useCanRevealIdentifiers } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 import { rememberCompany, ShellProvider } from '@/platform/shell';
 
@@ -21,6 +22,10 @@ vi.mock('@/modules/onboarding/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/modules/onboarding/api')>()),
   searchExporterProfiles: search,
 }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useCanRevealIdentifiers: vi.fn(),
+}));
 vi.mock('@/platform/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/auth')>()),
   useCurrentUser: vi.fn(),
@@ -29,6 +34,8 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
 const COMPANY = '3f1c2b7e-0000-4000-8000-000000000001';
 
 function signInAs(role: UserRole) {
+  // Searching by a full tax identifier needs the same permission the eye reads.
+  vi.mocked(useCanRevealIdentifiers).mockReturnValue(role === 'COMPLIANCE');
   vi.mocked(useCurrentUser).mockReturnValue({
     id: 7,
     email: 'someone@example.com',

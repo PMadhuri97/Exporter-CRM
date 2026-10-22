@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCanRevealIdentifiers } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 import { ShellProvider } from '@/platform/shell';
 
@@ -28,6 +29,10 @@ import type { ExporterProfileDetail, Qualification } from '../types';
 import { ExporterDetailPage } from './ExporterDetailPage';
 
 // Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useCanRevealIdentifiers: vi.fn(),
+}));
 vi.mock('@/platform/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/auth')>()),
   useCurrentUser: vi.fn(),
@@ -133,6 +138,9 @@ const QUALIFICATION: Qualification = {
 };
 
 function mockUser(role: string, id: string) {
+  // Compliance holds `exporters:view_full_tax_id` by default, and the eye reads the
+  // permission rather than the role, so it follows whatever each test signs in as.
+  vi.mocked(useCanRevealIdentifiers).mockReturnValue(role === 'COMPLIANCE');
   vi.mocked(useCurrentUser).mockReturnValue({
     id,
     email: 'user@aner.example',

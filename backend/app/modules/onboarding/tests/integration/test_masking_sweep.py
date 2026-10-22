@@ -407,6 +407,9 @@ EXPECTED_REFUSALS: dict[str, frozenset[UserRole]] = {
     # proposal is a pending compliance judgement, and OPERATIONS is neither the maker
     # nor the checker.
     f"{BASE}/background-check/proposals": BOTH,
+    # One officer's own record of what they proposed and decided. Compliance work,
+    # so neither operations nor a developer reads it.
+    f"{BASE}/background-check/proposals/reviewed": BOTH,
     # A document's content is a saved copy: `documents:download` (COMPLIANCE). Everyone
     # else reads the document on screen through `/documents/{id}/preview`.
     f"{BASE}/documents/content": BOTH,

@@ -151,17 +151,26 @@ describe('CompanyImportPage — bulk import', () => {
     expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
   });
 
-  it('downloads the Excel template by default and the CSV one on request', async () => {
+  it('offers one template, the CSV one', async () => {
+    // There were two buttons, and their labels did not say that one gave an Excel file
+    // and the other a CSV. One control, named for what it hands over.
     vi.mocked(getCompanyImportTemplate).mockResolvedValue(new Blob(['x']));
     URL.createObjectURL = vi.fn(() => 'blob:template');
     URL.revokeObjectURL = vi.fn();
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Download template' }));
-    await waitFor(() => expect(getCompanyImportTemplate).toHaveBeenCalledWith('xlsx'));
+
+    expect(screen.queryByRole('button', { name: 'Download template' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'CSV template' }));
     await waitFor(() => expect(getCompanyImportTemplate).toHaveBeenCalledWith('csv'));
-    await waitFor(() => expect(click).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(getCompanyImportTemplate).not.toHaveBeenCalledWith('xlsx');
     click.mockRestore();
+  });
+
+  it('still takes an Excel file, though the template it offers is a CSV', async () => {
+    // Dropping a .xlsx is unchanged — only the template download narrowed.
+    renderPage();
+    expect(screen.getByText(/Drop an Excel or CSV file here/)).toBeInTheDocument();
   });
 });

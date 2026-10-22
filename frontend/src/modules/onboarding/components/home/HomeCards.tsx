@@ -226,17 +226,42 @@ export function MyFollowUpsCard({ userId, canComplete = false }: { userId: strin
 }
 
 /**
- * Check back on: companies parked at "Not now" whose date has
- * come. Its own card, never mixed with follow-ups: a check-back cannot be marked
- * done — it clears when the conversation moves, so each one opens the company's
- * Activity tab instead.
+ * How far ahead this card looks, in days.
+ *
+ * Not only the ones already due. A check-back that surfaced on the morning it fell
+ * due gave nobody time to plan the call; a few days' notice is what makes the card
+ * worth reading before the date arrives. The Follow-ups *Overdue* tab keeps the
+ * stricter window — a future date has no business sitting beside work that is late.
+ */
+const CHECK_BACK_LOOKAHEAD_DAYS = 3;
+
+/**
+ * How many check-backs the card holds, and how many it shows without scrolling.
+ *
+ * It fetches more than it shows and scrolls to the rest, rather than cutting the list
+ * at five: the count beside the title is the true total, and a card reading "(8)" with
+ * five rows under it looks broken. Every one of these is a company somebody parked and
+ * meant to return to, so none is hidden behind a link.
+ *
+ * The cap stops a quarter's worth of parked companies turning Home into a long page —
+ * past it the card says how many more there are.
+ */
+const CHECK_BACK_LIMIT = 50;
+const CHECK_BACKS_BEFORE_SCROLL = 5;
+
+/**
+ * Check back on: companies parked at "Not now" whose date has come, or is about to.
+ * Its own card, never mixed with follow-ups: a check-back cannot be marked done — it
+ * clears when the conversation moves, so each one opens the company's Activity tab
+ * instead.
  */
 export function CheckBackCard() {
   const query = useFollowUps({
     state: 'OVERDUE',
     includeCheckBacks: true,
     checkBacksDueOnly: true,
-    limit: PREVIEW,
+    checkBacksDueWithinDays: CHECK_BACK_LOOKAHEAD_DAYS,
+    limit: CHECK_BACK_LIMIT,
   });
   const rows = query.data?.check_backs ?? [];
 
@@ -249,9 +274,16 @@ export function CheckBackCard() {
       ) : query.isError ? (
         <p role="alert" className="px-4 pb-4 text-body text-negative">Couldn&apos;t load check-backs.</p>
       ) : rows.length === 0 ? (
-        <EmptyLine className="px-4 pb-3">No check-backs due.</EmptyLine>
+        <EmptyLine className="px-4 pb-3">
+          No check-backs due in the next {CHECK_BACK_LOOKAHEAD_DAYS} days.
+        </EmptyLine>
       ) : (
-        <ul className="divide-y divide-line border-t border-line">
+        <ul
+          className="divide-y divide-line overflow-y-auto border-t border-line"
+          // Five rows, then it scrolls. A height in rows rather than pixels, so it
+          // stays five however the row's own padding or text size changes.
+          style={{ maxHeight: `calc(${CHECK_BACKS_BEFORE_SCROLL} * 2.875rem)` }}
+        >
           {rows.map((row) => (
             <li key={row.customer_id} className="flex items-center gap-3 px-4 py-2.5" data-testid="check-back">
               <span className="w-28 shrink-0">
@@ -270,6 +302,14 @@ export function CheckBackCard() {
             </li>
           ))}
         </ul>
+      )}
+      {/* The count above is the true total, so when the card holds fewer than that it
+          has to say so rather than let the two numbers quietly disagree. */}
+      {(query.data?.check_backs_total ?? 0) > rows.length && (
+        <p className="border-t border-line px-4 py-2 text-caption text-ink-3">
+          Showing {rows.length} of {query.data?.check_backs_total}. Narrow it on a
+          company&apos;s own page.
+        </p>
       )}
     </Card>
   );

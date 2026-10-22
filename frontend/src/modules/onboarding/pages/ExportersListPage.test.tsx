@@ -750,3 +750,40 @@ describe('ExportersListPage — a failed export', () => {
     expect(within(panel).getByRole('button', { name: 'Export' })).toBeEnabled();
   });
 });
+
+describe('ExportersListPage — how many the filters matched', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'ops-1');
+    vi.mocked(searchExporterProfiles).mockReset();
+  });
+
+  it('counts what the filters match, not the page on screen', async () => {
+    // One page of a far larger match. The footer read "2 shown", which reads as the
+    // whole result — the page's own length, not the server's count.
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE, { ...PROFILE, customer_id: 'c2', name: 'Beta Exports' }],
+      limit: 100,
+      offset: 0,
+      total: 185,
+    });
+
+    renderPage();
+    expect(await screen.findByText(/2 of 185/)).toBeInTheDocument();
+
+    // The panel counts the same number, so the two can never disagree on screen.
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    expect(await screen.findByText('185 companies match')).toBeInTheDocument();
+  });
+
+  it('says "shown" when the page holds the whole match', async () => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+
+    renderPage();
+    expect(await screen.findByText(/1 shown/)).toBeInTheDocument();
+  });
+});

@@ -27,6 +27,7 @@ import {
   listBackgroundCheckProposals,
   listCheckCycles,
   listOpenProposals,
+  listProposalsIReviewed,
   listReKycDue,
   recordBackgroundCheckDecision,
   rejectBackgroundCheckProposal,
@@ -165,6 +166,17 @@ export function useProposalsAwaitingMe(
   return useQuery({
     queryKey: [...PROPOSAL_QUEUE_KEY, 'awaiting-me', params.limit ?? null, params.order ?? null],
     queryFn: () => listOpenProposals({ awaitingMe: true, limit: params.limit, order: params.order }),
+    enabled: params.enabled ?? true,
+  });
+}
+
+/** Proposals this user made or resolved in the last `days` — Compliance work's *Reviewed*. */
+export function useProposalsIReviewed(
+  params: { days?: number; limit?: number; enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: [...PROPOSAL_QUEUE_KEY, 'reviewed-by-me', params.days ?? null, params.limit ?? null],
+    queryFn: () => listProposalsIReviewed({ days: params.days, limit: params.limit }),
     enabled: params.enabled ?? true,
   });
 }
