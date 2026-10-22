@@ -57,6 +57,10 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationOutcomeValue,
 )
+from app.modules.onboarding.domain.sealed_columns import (
+    PROFILE_PAN,
+    PROFILE_REGISTRATION_NUMBER,
+)
 from app.modules.onboarding.exceptions import CompanyNotInPipelineError
 from app.modules.onboarding.infrastructure.rxil.company_package import (
     parse_rxil_company_package,
@@ -95,7 +99,14 @@ async def _row_of(customer_id: uuid.UUID) -> dict:
             ),
             {"c": str(customer_id)},
         )
-        return dict(result.mappings().one())
+        row = dict(result.mappings().one())
+    # Raw SQL reads the stored text, and both identifiers are sealed since 0064/0065:
+    # opened with the columns' own types, as every ORM read is.
+    row["registration_number"] = PROFILE_REGISTRATION_NUMBER.process_result_value(
+        row["registration_number"], None
+    )
+    row["pan"] = PROFILE_PAN.process_result_value(row["pan"], None)
+    return row
 
 
 # ── The one mapping, in two places ────────────────────────────────────────────

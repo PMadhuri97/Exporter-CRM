@@ -17,8 +17,17 @@ constraint refuses it as before.
 
 from __future__ import annotations
 
+from typing import Any
+
+from sqlalchemy import Text, and_, func, not_, or_, type_coerce
+
 from app.modules.onboarding.domain.tax_identifiers import CIN_RE, GSTIN_RE, IEC_RE, PAN_RE
-from app.platform.security.sealed_type import SealedJSON, SealedString
+from app.platform.security.sealed_type import (
+    KEYED_SQL,
+    SealedJSON,
+    SealedKeyedString,
+    SealedString,
+)
 
 #: Eight digits — ``people._DIN`` and ``ck_exporter_contact_din``.
 DIN_PATTERN = "^[0-9]{8}$"
@@ -29,6 +38,42 @@ PROFILE_PAN = SealedString("exporter_profile.pan", pattern=PAN_RE.pattern)
 PROFILE_CIN = SealedString("exporter_profile.cin", pattern=CIN_RE.pattern)
 PROFILE_IEC = SealedString("exporter_profile.iec", pattern=IEC_RE.pattern)
 GSTIN = SealedString("exporter_gstin.gstin", pattern=GSTIN_RE.pattern)
+
+
+def _registration_key(value: str) -> str:
+    # Imported here, not at the top: `company_identity` imports the entities package,
+    # which imports `exporter_profile`, which imports this module.
+    from app.modules.onboarding.domain.company_identity import registration_key
+
+    return registration_key(value)
+
+
+#: Shown as typed, compared normalised (``uq_exporter_profile_country_registration_*``):
+#: ``<seal of registration_key(value)>|<seal of value>``, migration 0065.
+PROFILE_REGISTRATION_NUMBER = SealedKeyedString(
+    "exporter_profile.registration_number", normalise=_registration_key
+)
+
+
+def registration_number_matches(column: Any, registration_number: str) -> Any:
+    """SQL true where ``column`` holds the same registration as ``registration_number``:
+    letters and digits only, upper-cased, so ``KVK 12.345`` matches ``kvk-12345``.
+
+    Two halves, one per index (migration 0065): a row written before sealing is
+    compared as it always was, through
+    ``upper(regexp_replace(registration_number, '[^A-Za-z0-9]', '', 'g'))``, and a
+    sealed row through the seal of its key.
+    """
+    plain = type_coerce(column, Text())
+    wanted = _registration_key(registration_number)
+    return or_(
+        and_(
+            not_(plain.op("~")(KEYED_SQL)),
+            func.upper(func.regexp_replace(plain, "[^A-Za-z0-9]", "", "g")) == wanted,
+        ),
+        PROFILE_REGISTRATION_NUMBER.key_matches(column, registration_number),
+    )
+
 
 # ── A legacy deal buyer ──────────────────────────────────────────────────────
 BUYER_TAX_ID = SealedString("deal_buyer.tax_id")

@@ -52,17 +52,20 @@ from __future__ import annotations
 
 import copy
 import re
+from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import String, Text, type_coerce
+from sqlalchemy import String, Text, func, type_coerce
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import operators
 from sqlalchemy.types import TypeDecorator
 
 from app.platform.security.field_cipher import (
     decrypt_deterministic,
+    decrypt_field,
     deterministic_seals,
     encrypt_deterministic,
+    encrypt_field,
 )
 
 #: How wide a sealed identifier column is. A ciphertext is a ``d1.<key id>.`` prefix
@@ -222,4 +225,95 @@ class SealedJSON(TypeDecorator):
         return self._transform(value, seal=False)
 
 
-__all__ = ["SEALED_SQL", "SEALED_WIDTH", "SealedJSON", "SealedString", "looks_sealed"]
+#: A ``SealedKeyedString`` value: the AES-SIV seal of the comparison key, ``|``, and the
+#: AES-GCM seal of the value as written. Neither half can contain ``|``.
+_KEYED = re.compile(r"^d1\.[^.\s|]+\.[A-Za-z0-9+/]+={0,2}\|v1\.[^.\s|]+\.[A-Za-z0-9+/]+={0,2}$")
+#: The same shape as a Postgres regex, for the partial indexes that split old plain rows
+#: from sealed ones (migration ``onboarding_0065``).
+KEYED_SQL = (
+    r"^d1\.[^.[:space:]|]+\.[A-Za-z0-9+/]+={0,2}\|v1\.[^.[:space:]|]+\.[A-Za-z0-9+/]+={0,2}$"
+)
+
+
+def looks_keyed(value: str | None) -> bool:
+    """Whether ``value`` was written by :class:`SealedKeyedString`."""
+    return bool(value) and _KEYED.match(value) is not None
+
+
+class SealedKeyedString(TypeDecorator):
+    """A ``text`` column for a value **shown as written but compared normalised** — a
+    registration number, where ``KVK 12.345`` and ``kvk-12345`` are one registration.
+
+    A single deterministic seal cannot do both: sealing the value as written makes the
+    two spellings different ciphertexts, and sealing the normalised form loses the
+    registrar's formatting. So the column holds two seals of one value:
+
+        <AES-SIV of key(value)>|<AES-GCM of value>
+
+    The first half is what a unique index and a lookup compare
+    (``split_part(column, '|', 1)``), the second is what reads back. The display half
+    uses a random nonce: nothing compares it, so it leaks nothing — re-saving the same
+    value writes different bytes, and only the first half has to stay stable.
+
+    ``normalise`` is the key function (``company_identity.registration_key``). A
+    blank value is written as it came, so ``NULLIF(column, '')`` reads it as blank.
+
+    Equality on the column is refused rather than silently wrong: the stored text
+    differs on every write, so ``column == value`` could never match. Compare keys with
+    :meth:`key_matches`.
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def __init__(self, purpose: str, normalise: Callable[[str], str]) -> None:
+        super().__init__()
+        self.purpose = purpose
+        self.normalise = normalise
+
+    @property
+    def key_purpose(self) -> str:
+        return f"{self.purpose}.key"
+
+    def process_bind_param(self, value: Any, dialect: Any) -> Any:
+        if value is None or not value.strip() or looks_keyed(value):
+            return value
+        key = encrypt_deterministic(self.normalise(value), purpose=self.key_purpose)
+        return f"{key}|{encrypt_field(value, purpose=self.purpose)}"
+
+    def process_result_value(self, value: Any, dialect: Any) -> Any:
+        if value is None or not looks_keyed(value):
+            return value
+        return decrypt_field(value.split("|", 1)[1], purpose=self.purpose)
+
+    def key_matches(self, column: Any, value: str) -> Any:
+        """SQL true where a **sealed** row's key equals ``value``'s, under any configured
+        key. A row written before sealing is not matched here; the caller compares those
+        the way the column was compared before."""
+        seals = deterministic_seals(self.normalise(value), purpose=self.key_purpose)
+        return func.split_part(type_coerce(column, Text()), "|", 1).in_(seals)
+
+    class Comparator(TypeDecorator.Comparator, String.comparator_factory):  # type: ignore[misc,name-defined]
+        def operate(self, op: Any, *other: Any, **kwargs: Any) -> Any:
+            if op in (operators.eq, operators.ne, operators.in_op, operators.not_in_op) and not (
+                len(other) == 1 and other[0] is None
+            ):
+                raise TypeError(
+                    f"{self.expr} holds a randomised seal and cannot be compared with "
+                    "`==` or `in_()`; use SealedKeyedString.key_matches"
+                )
+            return super().operate(op, *other, **kwargs)
+
+    comparator_factory = Comparator  # type: ignore[assignment]
+
+
+__all__ = [
+    "KEYED_SQL",
+    "SEALED_SQL",
+    "SEALED_WIDTH",
+    "SealedJSON",
+    "SealedKeyedString",
+    "SealedString",
+    "looks_keyed",
+    "looks_sealed",
+]

@@ -66,9 +66,14 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
-from app.modules.onboarding.domain.sealed_columns import PROFILE_CIN, PROFILE_IEC, PROFILE_PAN
+from app.modules.onboarding.domain.sealed_columns import (
+    PROFILE_CIN,
+    PROFILE_IEC,
+    PROFILE_PAN,
+    PROFILE_REGISTRATION_NUMBER,
+)
 from app.platform.database.models import AnerModel
-from app.platform.security.sealed_type import SEALED_SQL
+from app.platform.security.sealed_type import KEYED_SQL, SEALED_SQL
 
 if TYPE_CHECKING:
     pass
@@ -196,6 +201,11 @@ class ExporterProfile(AnerModel):
         # (upper-cased, inner whitespace and punctuation stripped) so "KVK 1234-56" and
         # "kvk123456" collide, which is the whole point. Partial: most rows are NULL,
         # and two companies with no number are not duplicates.
+        #
+        # Two indexes, one rule (0065). A row written before sealing is compared as it
+        # always was; a sealed one holds `<seal of the key>|<seal of the value>` and is
+        # compared on the first half, which is the same for every spelling of one
+        # registration. `sealed_columns.registration_number_matches` looks up both.
         Index(
             "uq_exporter_profile_country_registration_number",
             "country",
@@ -203,6 +213,17 @@ class ExporterProfile(AnerModel):
             unique=True,
             postgresql_where=text(
                 "registration_number IS NOT NULL AND country IS NOT NULL"
+                f" AND registration_number !~ '{KEYED_SQL}'"
+            ),
+        ),
+        Index(
+            "uq_exporter_profile_country_registration_key",
+            "country",
+            text("split_part(registration_number, '|', 1)"),
+            unique=True,
+            postgresql_where=text(
+                "registration_number IS NOT NULL AND country IS NOT NULL"
+                f" AND registration_number ~ '{KEYED_SQL}'"
             ),
         ),
         # "Which companies did this deal's buyer become?" — the buyer migration's own
@@ -439,7 +460,12 @@ class ExporterProfile(AnerModel):
     #: the migration made, which may have nothing but a name and a country. Unique per
     #: country once normalised — a partial index, because most rows are `NULL`.
     #: Masked like CIN.
-    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    #: **Encrypted** since 0065 (``sealed_columns.PROFILE_REGISTRATION_NUMBER``): the
+    #: seal of its normalised key and the seal of the number as typed. Reads back as
+    #: typed; compare with ``registration_number_matches``, never ``==``.
+    registration_number: Mapped[str | None] = mapped_column(
+        PROFILE_REGISTRATION_NUMBER, nullable=True
+    )
 
     #: Whether this company is in the sales pipeline at all. `NOT NULL`
     #: with a server default, so every existing company reads `IN_PIPELINE` without a

@@ -117,6 +117,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
 )
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
+from app.modules.onboarding.domain.sealed_columns import registration_number_matches
 from app.modules.onboarding.domain.tax_identifiers import GSTIN_RE, PAN_RE, embedded_pan
 from app.platform.database import services as db_services
 
@@ -492,10 +493,9 @@ async def _registration_holders(
             select(ExporterProfile.customer_id).where(
                 ExporterProfile.country == country,
                 ExporterProfile.registration_number.isnot(None),
-                text(
-                    "upper(regexp_replace(exporter_profile.registration_number, "
-                    "'[^A-Za-z0-9]', '', 'g')) = :key"
-                ).bindparams(key=key),
+                # Plain rows the old way, sealed ones on their key (0065). `key` is
+                # already `registration_key(...)`, which is idempotent.
+                registration_number_matches(ExporterProfile.registration_number, key),
             )
         )
     )

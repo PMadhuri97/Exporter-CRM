@@ -28,7 +28,7 @@ from app.modules.onboarding.infrastructure.repositories.exporter_profile_reposit
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
-from app.platform.security.sealed_type import looks_sealed
+from app.platform.security.sealed_type import looks_keyed, looks_sealed
 
 pytestmark = pytest.mark.asyncio
 
@@ -247,3 +247,83 @@ async def test_an_address_is_stored_sealed_and_read_back_plain():
             "Mumbai",
             "400002",
         )
+
+
+# ── Registration numbers (0065) ─────────────────────────────────────────────
+
+
+def _registration() -> str:
+    """A registration number nothing else uses: the suite's database persists."""
+    return f"KVK {uuid.uuid4().hex[:4].upper()}.{uuid.uuid4().int % 10**5:05d}"
+
+
+async def _foreign(company_id: uuid.UUID, registration_number: str) -> None:
+    await _set_identifiers(
+        company_id,
+        country="NL",
+        registration_number=registration_number,
+        identity_type="FOREIGN_REG",
+    )
+
+
+async def _holder(registration_number: str) -> uuid.UUID | None:
+    async with db_services.AsyncSessionLocal() as db:
+        profile = await ExporterProfileRepository(db).get_by_registration_number(
+            country="nl", registration_number=registration_number
+        )
+        return profile.customer_id if profile is not None else None
+
+
+async def test_a_registration_number_is_sealed_and_reads_back_as_typed():
+    company_id = await make_company()
+    registration = _registration()
+    await _foreign(company_id, registration)
+
+    stored = _stored(
+        "SELECT registration_number FROM onboarding.exporter_profile WHERE customer_id = %s",
+        str(company_id),
+    )
+    assert looks_keyed(stored)
+    async with db_services.AsyncSessionLocal() as db:
+        profile = await db.scalar(
+            select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
+        )
+        assert profile.registration_number == registration
+
+
+async def test_a_sealed_registration_is_found_under_another_spelling():
+    company_id = await make_company()
+    registration = _registration()
+    await _foreign(company_id, registration)
+    assert await _holder(registration.lower().replace(" ", "-").replace(".", "")) == company_id
+
+
+async def test_a_registration_written_before_sealing_is_still_found():
+    company_id = await make_company()
+    registration = _registration()
+    _execute(
+        "UPDATE onboarding.exporter_profile SET country = 'NL', registration_number = %s,"
+        " identity_type = 'FOREIGN_REG' WHERE customer_id = %s",
+        registration,
+        str(company_id),
+    )
+    assert await _holder(registration.lower().replace(" ", "")) == company_id
+
+
+async def test_the_database_refuses_one_registration_twice_in_a_country():
+    """Two spellings of one number, both sealed: `uq_..._registration_key`."""
+    registration = _registration()
+    await _foreign(await make_company(), registration)
+    with pytest.raises(IntegrityError, match="uq_exporter_profile_country_registration_key"):
+        await _foreign(await make_company(), registration.lower().replace(".", "-"))
+
+
+async def test_the_same_registration_in_another_country_is_allowed():
+    registration = _registration()
+    await _foreign(await make_company(), registration)
+    await _set_identifiers(
+        await make_company(),
+        country="DE",
+        registration_number=registration,
+        identity_type="FOREIGN_REG",
+    )

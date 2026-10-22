@@ -19,7 +19,13 @@ from app.platform.security.field_cipher import (
     deterministic_seals,
     encrypt_deterministic,
 )
-from app.platform.security.sealed_type import SealedJSON, SealedString, looks_sealed
+from app.platform.security.sealed_type import (
+    SealedJSON,
+    SealedKeyedString,
+    SealedString,
+    looks_keyed,
+    looks_sealed,
+)
 
 KEY_A = base64.b64encode(b"a" * 32).decode()
 KEY_B = base64.b64encode(b"b" * 32).decode()
@@ -197,3 +203,50 @@ def test_a_snapshot_written_before_sealing_or_without_the_leaf_reads_as_it_stand
     }
     assert SNAPSHOT.process_result_value({"buyer": None}, DIALECT) == {"buyer": None}
     assert SNAPSHOT.process_result_value(None, DIALECT) is None
+
+
+# ── Shown as written, compared normalised ───────────────────────────────────
+
+
+def _alnum_upper(value: str) -> str:
+    return "".join(ch for ch in value if ch.isascii() and ch.isalnum()).upper()
+
+
+KEYED = SealedKeyedString("company.registration_number", normalise=_alnum_upper)
+
+
+def test_a_keyed_value_reads_back_as_written():
+    stored = KEYED.process_bind_param("KVK 12.345", DIALECT)
+    assert looks_keyed(stored)
+    assert "12" not in stored
+    assert KEYED.process_result_value(stored, DIALECT) == "KVK 12.345"
+
+
+def test_two_spellings_of_one_registration_share_their_first_half():
+    """What the unique index compares; the second half differs on every write."""
+    first = KEYED.process_bind_param("KVK 12.345", DIALECT)
+    second = KEYED.process_bind_param("kvk-12345", DIALECT)
+    assert first.split("|")[0] == second.split("|")[0]
+    assert first.split("|")[1] != second.split("|")[1]
+
+
+def test_a_blank_or_already_keyed_value_is_written_as_it_came():
+    stored = KEYED.process_bind_param("KVK 12.345", DIALECT)
+    assert KEYED.process_bind_param(stored, DIALECT) == stored
+    assert KEYED.process_bind_param("", DIALECT) == ""
+    assert KEYED.process_bind_param(None, DIALECT) is None
+    assert KEYED.process_result_value("KVK 12.345", DIALECT) == "KVK 12.345"
+
+
+def test_equality_on_a_keyed_column_is_refused_rather_than_silently_wrong():
+    table = Table(
+        "registry",
+        MetaData(),
+        Column("id", Integer, primary_key=True),
+        Column("registration_number", KEYED),
+    )
+    with pytest.raises(TypeError, match="key_matches"):
+        table.c.registration_number == "KVK 12.345"  # noqa: B015
+    assert "IS NOT NULL" in str(
+        select(table).where(table.c.registration_number.isnot(None)).compile(dialect=DIALECT)
+    )
