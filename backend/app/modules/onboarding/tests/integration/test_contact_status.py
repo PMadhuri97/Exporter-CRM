@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg2
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
@@ -127,6 +127,58 @@ async def test_a_contact_made_active_again_needs_no_reason_and_may_be_primary(
     )
     assert promoted.status_code == 200, promoted.text
     assert len(await _contact_history(client, token, customer_id)) == 2
+
+
+async def test_reactivating_a_contact_cannot_duplicate_a_replacement(
+    client: AsyncClient,
+):
+    """Coming back is a write of the details, so it is held to the duplicate rule.
+
+    The way round it: the duplicate check only looks at *active* contacts, so that a
+    replacement is not warned about the person it replaces. A leaves, B is added on
+    A's email — allowed, and the point of that exclusion — and then A is reactivated.
+    Nothing used to check, and the company ended with two active contacts reachable at
+    one address.
+    """
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    customer_id, leaver = await _contact(client, token, email="shared@acme.example")
+    await _set_status(
+        client, token, customer_id, leaver, status="LEFT_COMPANY", reason="Resigned"
+    )
+
+    replacement = await client.post(
+        f"{BASE}/{customer_id}/contacts",
+        headers=auth_header(token),
+        json={"name": "Successor", "email": "shared@acme.example"},
+    )
+    assert replacement.status_code == 201, replacement.text
+
+    back = await _set_status(client, token, customer_id, leaver, status="ACTIVE")
+
+    assert back.status_code == 409, back.text
+    assert back.json()["error_code"] == "EXPORTER_CONTACT_ALREADY_EXISTS"
+    # Refused before anything was written: the leaver is still gone.
+    async with db_services.AsyncSessionLocal() as db:
+        status = await db.scalar(
+            select(ExporterContact.status).where(ExporterContact.id == leaver)
+        )
+    assert status == "LEFT_COMPANY"
+
+
+async def test_reactivating_a_contact_nobody_replaced_still_works(client: AsyncClient):
+    """The check must not refuse the ordinary case — the details are the contact's own,
+    and `exclude_id` is what keeps it from matching itself."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    customer_id, contact_id = await _contact(
+        client, token, email="solo@acme.example", phone="+91 98765 43210"
+    )
+    await _set_status(
+        client, token, customer_id, contact_id, status="INACTIVE", reason="On leave"
+    )
+
+    back = await _set_status(client, token, customer_id, contact_id, status="ACTIVE")
+
+    assert back.status_code == 200, back.text
 
 
 async def test_the_same_status_again_writes_nothing(client: AsyncClient):

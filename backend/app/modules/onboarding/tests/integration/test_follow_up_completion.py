@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.modules.onboarding.application.conversation_service import ConversationService
 from app.modules.onboarding.application.exporter_contact_activity_service import (
@@ -620,6 +620,93 @@ async def test_check_backs_due_only_keeps_today_and_drops_the_future():
     # Without the flag both are listed, as before.
     assert (await _list(customer_id=parked)).check_backs_total == 1
 
+
+async def test_the_window_can_look_a_few_days_ahead():
+    """Home's view: the ones already due, and the ones falling due shortly.
+
+    A check-back that appeared only on the morning it fell due gave nobody time to
+    plan the call, so the card asks for a few days' notice. The edge is inclusive and
+    the day past it is still out.
+    """
+    today = datetime.now(UTC).date()
+    companies = {}
+    for days in (-1, 0, 3, 4):
+        company_id = await _company()
+        companies[days] = company_id
+        async with db_services.AsyncSessionLocal() as db:
+            # A date in the past is refused on the way in — it goes stale by time
+            # passing, not by being typed — so the overdue one is set ahead and then
+            # moved back on the record, which is the state time would leave behind.
+            await ConversationService(db).set_conversation(
+                company_id,
+                ExporterConversation.NOT_NOW,
+                reason="Not now",
+                check_back_on=today + timedelta(days=max(days, 0)),
+                actor_id="user-1",
+            )
+        if days < 0:
+            async with db_services.AsyncSessionLocal() as db:
+                await db.execute(
+                    update(ExporterProfile)
+                    .where(ExporterProfile.customer_id == company_id)
+                    .values(conversation_check_back_on=today + timedelta(days=days))
+                )
+                await db.commit()
+
+    async def listed(company_id, **kwargs) -> int:
+        view = await _list(customer_id=company_id, check_backs_due_only=True, **kwargs)
+        return view.check_backs_total
+
+    # Three days' notice: yesterday, today and the third day are in; the fourth is out.
+    assert await listed(companies[-1], check_backs_due_within_days=3) == 1
+    assert await listed(companies[0], check_backs_due_within_days=3) == 1
+    assert await listed(companies[3], check_backs_due_within_days=3) == 1
+    assert await listed(companies[4], check_backs_due_within_days=3) == 0
+
+    # Without it, the window is today — which is what the Overdue tab still asks for.
+    assert await listed(companies[3]) == 0
+    assert await listed(companies[0]) == 1
+
+
+async def test_looking_ahead_does_not_make_a_future_check_back_overdue():
+    """The window changes which companies are listed, never how late one of them is.
+    A check-back due in two days is listed and is not overdue."""
+    today = datetime.now(UTC).date()
+    soon = await _company()
+    async with db_services.AsyncSessionLocal() as db:
+        await ConversationService(db).set_conversation(
+            soon,
+            ExporterConversation.NOT_NOW,
+            reason="Not now",
+            check_back_on=today + timedelta(days=2),
+            actor_id="user-1",
+        )
+
+    view = await _list(
+        customer_id=soon, check_backs_due_only=True, check_backs_due_within_days=3
+    )
+
+    assert [row.customer_id for row in view.check_backs] == [soon]
+    assert view.check_backs[0].is_overdue is False
+
+
+async def test_the_look_ahead_needs_the_window_to_mean_anything():
+    """On its own it widens nothing: with no window every check-back is listed
+    already, however far off it is."""
+    today = datetime.now(UTC).date()
+    far = await _company()
+    async with db_services.AsyncSessionLocal() as db:
+        await ConversationService(db).set_conversation(
+            far,
+            ExporterConversation.NOT_NOW,
+            reason="Not now",
+            check_back_on=today + timedelta(days=90),
+            actor_id="user-1",
+        )
+
+    view = await _list(customer_id=far, check_backs_due_within_days=3)
+
+    assert view.check_backs_total == 1
 
 # ── The routes ───────────────────────────────────────────────────────────────
 

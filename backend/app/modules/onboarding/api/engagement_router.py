@@ -77,7 +77,9 @@ _COMPANY_VIEW = require_permission("exporters", "view")
         "stored encrypted. Adding a director or beneficial owner writes a `contact` "
         "history row. Setting is_primary=true demotes any existing primary contact for "
         "this customer in the same transaction — never two primaries at once; only a "
-        "contact can be primary."
+        "contact can be primary.\n\n"
+        "A contact this company can already reach at the same email address or phone "
+        "number is refused (409), not recorded a second time."
     ),
     responses={
         201: {"model": ExporterContactResponse},
@@ -85,7 +87,10 @@ _COMPANY_VIEW = require_permission("exporters", "view")
         403: {"description": "`exporters:edit` permission required"},
         409: {
             "description": (
-                "Another contact was made primary for this company at the same moment "
+                "This company already has a contact with the same email address or "
+                "the same phone number — either alone is enough "
+                "(EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact "
+                "was made primary for it at the same moment "
                 "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
             )
         },
@@ -98,7 +103,8 @@ async def add_exporter_contact(
     current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactResponse:
-    contact = await ExporterContactActivityService(db).add_contact(
+    service = ExporterContactActivityService(db)
+    contact = await service.add_contact(
         customer_id,
         name=body.name,
         role=body.role,
@@ -135,7 +141,10 @@ async def add_exporter_contact(
         404: {"description": "No such company, or no such contact on it"},
         409: {
             "description": (
-                "Another contact was made primary for this company at the same moment "
+                "This company already has a contact with the same email address or "
+                "the same phone number — either alone is enough "
+                "(EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact "
+                "was made primary for it at the same moment "
                 "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
             )
         },

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCanRevealIdentifiers } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
 import {
@@ -27,6 +28,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 // The GSTIN goes through `Identifier`, which asks who is looking.
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useCanRevealIdentifiers: vi.fn(),
+}));
 vi.mock('@/platform/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/auth')>()),
   useCurrentUser: vi.fn(),
@@ -68,6 +73,9 @@ function renderSection({ canEdit = true, canFlag = true } = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useCurrentUser).mockReturnValue({ role: 'COMPLIANCE' } as ReturnType<typeof useCurrentUser>);
+  // Compliance holds `exporters:view_full_tax_id` by default, and the eye reads the
+  // permission rather than the role, so it follows whatever each test signs in as.
+  vi.mocked(useCanRevealIdentifiers).mockReturnValue(true);
   vi.mocked(listGstRegistrations).mockResolvedValue({
     registrations: [registration()],
     flagged_count: 0,

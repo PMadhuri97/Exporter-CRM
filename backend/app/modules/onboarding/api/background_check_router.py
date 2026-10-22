@@ -49,7 +49,7 @@ notifications are these lists and their counts. ``in_review``, ``overdue`` and
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -1126,9 +1126,35 @@ async def list_proposals_across_companies(
         )
         if status == "open":
             facts = await ComplianceWorklists(db).approval_facts([p.company_id for p, _, _ in rows])
+    return await _proposal_list_response(
+        db,
+        rows=rows,
+        total=total,
+        limit=limit,
+        offset=offset,
+        viewer=user,
+        permissions=permissions,
+        facts=facts,
+    )
+
+
+async def _proposal_list_response(
+    db: AsyncSession,
+    *,
+    rows: list,
+    total: int,
+    limit: int,
+    offset: int,
+    viewer: User,
+    permissions: frozenset[Permission],
+    facts: dict[uuid.UUID, WorkItem],
+) -> BackgroundCheckProposalListResponse:
+    """One page of proposals as the API renders them — shared by the approval queue
+    and the reviewed listing, so the two cannot drift into showing a proposal
+    differently depending on which screen asked for it."""
     views = [(proposal_view(p, r), name) for p, r, name in rows]
     names = await actor_names(
-        db, user, [*(v.proposed_by for v, _ in views), *(v.resolved_by for v, _ in views)]
+        db, viewer, [*(v.proposed_by for v, _ in views), *(v.resolved_by for v, _ in views)]
     )
     cycles = await CheckCycleRepository(db).by_ids([v.cycle_id for v, _ in views])
     return BackgroundCheckProposalListResponse(
@@ -1138,7 +1164,7 @@ async def list_proposals_across_companies(
                 names=dict(names),
                 cycle_number=cycles[view.cycle_id].number if view.cycle_id in cycles else None,
                 company_name=name,
-                viewer=user,
+                viewer=viewer,
                 permissions=permissions,
                 reviewer_id=facts[view.company_id].reviewer_id if view.company_id in facts else None,
                 relationship_manager_id=(
@@ -1153,6 +1179,58 @@ async def list_proposals_across_companies(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/background-check/proposals/reviewed",
+    response_model=BackgroundCheckProposalListResponse,
+    summary="Background-check proposals this user reviewed",
+    description=(
+        "What the signed-in compliance officer has had a hand in, newest first: the "
+        "proposals they made, whatever became of them, and the ones they approved or "
+        "rejected for somebody else. Their own work only — there is no parameter for "
+        "reading another officer's.\n\n"
+        "A proposal they made and nobody has resolved yet is included, marked open: it "
+        "is work they did, and leaving it out would hide the one they are waiting on.\n\n"
+        "`days` bounds how far back it reaches. On `compliance:decide` rather than "
+        "`compliance:approve`, so an officer who proposes but may not approve can still "
+        "see their own record."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`compliance:decide` permission required"},
+    },
+)
+async def list_proposals_i_reviewed(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_COMPLIANCE_DECIDE)],
+    permissions: _PERMISSIONS,
+    days: Annotated[
+        int,
+        Query(ge=1, le=365, description="How many days back to reach."),
+    ] = 90,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> BackgroundCheckProposalListResponse:
+    rows, total = await BackgroundCheckProposalRepository(db).list_across_companies(
+        # Every status: one person's own work reads as a sequence, and splitting it by
+        # outcome would hide the proposal they are still waiting on.
+        status=None,
+        reviewed_by=str(user.id),
+        since=clock.now() - timedelta(days=days),
+        limit=limit,
+        offset=offset,
+    )
+    return await _proposal_list_response(
+        db,
+        rows=rows,
+        total=total,
+        limit=limit,
+        offset=offset,
+        viewer=user,
+        permissions=permissions,
+        facts={},
     )
 
 

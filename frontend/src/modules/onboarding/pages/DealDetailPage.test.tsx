@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCanRevealIdentifiers } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
 import {
@@ -33,6 +34,8 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
 // Saving a copy is `documents:download`, read from the server; this page's tests hold it.
 vi.mock('@/platform/access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/access')>()),
+  // The eye reads `exporters:view_full_tax_id`, set per test below.
+  useCanRevealIdentifiers: vi.fn(),
   useHasPermission: () => true,
 }));
 vi.mock('../api', () => ({
@@ -121,6 +124,9 @@ function document_(overrides: Partial<CrmDocument> = {}): CrmDocument {
 }
 
 function signedInAs(role: string) {
+  // Compliance holds `exporters:view_full_tax_id` by default, and the eye reads the
+  // permission rather than the role, so it follows whatever each test signs in as.
+  vi.mocked(useCanRevealIdentifiers).mockReturnValue(role === 'COMPLIANCE');
   vi.mocked(useCurrentUser).mockReturnValue({
     id: 'user-1',
     email: 'me@aner.example',

@@ -689,6 +689,19 @@ Rules that go with it:
   `awaiting=me` leaves out the caller's own — the Home card "Proposals awaiting me"); `status` may
   also be `approved`, `rejected`, `withdrawn` (newest first). A company's own:
   `GET /exporters/{id}/background-check/proposals` (staff).
+- **One officer's own record** (19 October 2026):
+  `GET /background-check/proposals/reviewed` — what the signed-in officer has had a hand
+  in, newest first: the proposals they made whatever became of them, and the ones they
+  approved or rejected for somebody else. Every status, including **open** ones they
+  proposed, because that is the one they are waiting on and a sequence with it missing
+  reads wrong. `days` (1–365, default 90) bounds how far back it reaches; `limit`,
+  `offset` as the queue's. **Their own work only — there is no parameter for reading
+  another officer's**, which is why it is on `compliance:decide` rather than
+  `compliance:approve`: an officer who may propose but not approve still sees their
+  record. It renders through the same `_proposal_list_response` as the queue, so the two
+  screens cannot drift. It feeds the Compliance work screen's **Reviewed** tab, which
+  shows one row per company (the newest proposal) and names the decision in the past
+  tense beside the date of the thing each date belongs to.
 - **Tables** (0026, both append-only, with provenance columns): `background_check_proposal` (`created_by` is
   the proposer, `created_at` when proposed) and `background_check_proposal_resolution` (at most one
   per proposal; `outcome` `APPROVED`/`REJECTED`/`WITHDRAWN`; `created_by` the resolver; a copy of

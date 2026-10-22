@@ -141,8 +141,45 @@ describe('Home cards', () => {
     const link = await screen.findByRole('link', { name: /Open activity: Aarav Textiles/ });
     expect(link).toHaveAttribute('href', `/companies/${CUSTOMER_ID}?tab=conversation`);
     expect(listFollowUps).toHaveBeenLastCalledWith(
-      expect.objectContaining({ includeCheckBacks: true, checkBacksDueOnly: true }),
+      expect.objectContaining({
+        includeCheckBacks: true,
+        checkBacksDueOnly: true,
+        // Three days ahead, not only what is due today or earlier. Asked without it,
+        // the server answers with the due ones alone and the card misses the week.
+        checkBacksDueWithinDays: 3,
+      }),
     );
+  });
+
+  it('lists the days ahead as well as the overdue, and says how many it left out', async () => {
+    // Six rows against a total of eight: the card asks for more than the five it shows
+    // without scrolling, so the line under it has to account for the two it never got.
+    vi.mocked(listFollowUps).mockResolvedValue({
+      ...LIST,
+      check_backs: Array.from({ length: 6 }, (_, i) => ({
+        customer_id: `22222222-2222-4222-8222-00000000000${i}`,
+        exporter_display_name: `Company ${i}`,
+        conversation: 'NOT_NOW' as const,
+        // The first is past due; the rest fall inside the look-ahead.
+        check_back_on: `2026-09-2${i}`,
+        is_overdue: i === 0,
+      })),
+      check_backs_total: 8,
+    });
+
+    renderCard(<CheckBackCard />);
+    expect(await screen.findAllByTestId('check-back')).toHaveLength(6);
+    // Not yet due, and on the card anyway.
+    expect(screen.getByText('Company 4')).toBeInTheDocument();
+    expect(screen.getByText(/Showing 6 of 8/)).toBeInTheDocument();
+  });
+
+  it('says what it looked at when no check-back is near', async () => {
+    vi.mocked(listFollowUps).mockResolvedValue({ ...LIST, check_backs: [], check_backs_total: 0 });
+    renderCard(<CheckBackCard />);
+    expect(
+      await screen.findByText('No check-backs due in the next 3 days.'),
+    ).toBeInTheDocument();
   });
 
   it('counts each journey stage, and says "200+" rather than a wrong total at the cap', async () => {
