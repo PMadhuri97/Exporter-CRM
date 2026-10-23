@@ -55,6 +55,7 @@ from app.modules.onboarding.domain.entities.exporter_contact import ExporterCont
 from app.modules.onboarding.exceptions import (
     ActivityDueInPastError,
     ContactNotActiveError,
+    DirectorDinAlreadyExistsError,
     ExporterContactAlreadyExistsError,
     ExporterContactNotFoundError,
     ExporterContactPrimaryConflictError,
@@ -144,6 +145,27 @@ class ExporterContactActivityService:
             field="email" if matched_email else "phone",
         )
 
+    async def _refuse_a_duplicate_din(
+        self, customer_id: uuid.UUID, din: str | None, *, exclude_id: uuid.UUID | None = None
+    ) -> None:
+        """Refuse a DIN another person of this company already holds.
+
+        A DIN is issued to one individual for life, so a second holder at one company is
+        a mistake on one of the two records (``DirectorDinAlreadyExistsError`` says which
+        person to look at). Other companies are not looked at: the same director sitting
+        on two boards is ordinary.
+
+        Not autoflushed: on an edit the change is already on the row, and the lookup
+        must not write it before ``people.check_person`` has had its say — a DIN on a
+        non-director would reach the database as a 500 rather than a 422.
+        """
+        if not din:
+            return
+        with self._db.no_autoflush:
+            other = await self._contacts.other_holding_din(customer_id, din, exclude_id=exclude_id)
+        if other is not None:
+            raise DirectorDinAlreadyExistsError(contact_id=other.id, name=other.name)
+
     async def add_contact(
         self,
         customer_id: uuid.UUID,
@@ -185,6 +207,7 @@ class ExporterContactActivityService:
         # would otherwise both read "no duplicate" and both write.
         await self._contacts.lock_company(customer_id)
         await self._refuse_a_duplicate(customer_id, email=email, phone=phone)
+        await self._refuse_a_duplicate_din(customer_id, (details or {}).get("din"))  # type: ignore[arg-type]
 
         fields = dict(details or {})
         number = fields.pop("identification_number", None)
@@ -304,6 +327,14 @@ class ExporterContactActivityService:
                 phone=open_phone(contact.phone),
                 exclude_id=contact_id,
             )
+
+        # On the DIN the edit leaves behind, so a change that only made the person a
+        # director again is not checked — their DIN was cleared when the role went.
+        if "din" in fields:
+            # The lock is a query too, and would flush the edited row just the same.
+            with self._db.no_autoflush:
+                await self._contacts.lock_company(customer_id)
+            await self._refuse_a_duplicate_din(customer_id, contact.din, exclude_id=contact_id)
 
         if promote is not None:
             if promote and contact.status != ContactStatus.ACTIVE.value:

@@ -176,6 +176,28 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         )
         return list(result.scalars().all())
 
+    async def other_holding_din(
+        self, customer_id: uuid.UUID, din: str, *, exclude_id: uuid.UUID | None = None
+    ) -> ExporterContact | None:
+        """Another person of this company holding ``din``, of any status, earliest first.
+
+        Every status, unlike ``others_sharing_details``: a DIN names one individual for
+        life, so a director who left is still the person it belongs to.
+
+        ``==`` on the sealed column matches a DIN written before it was sealed and one
+        written since (``SealedString``).
+        """
+        conditions = [ExporterContact.customer_id == customer_id, ExporterContact.din == din]
+        if exclude_id is not None:
+            conditions.append(ExporterContact.id != exclude_id)
+        result = await self.session.execute(
+            select(ExporterContact)
+            .where(*conditions)
+            .order_by(ExporterContact.created_at.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_for_customer(
         self, customer_id: uuid.UUID, contact_id: uuid.UUID
     ) -> ExporterContact | None:
