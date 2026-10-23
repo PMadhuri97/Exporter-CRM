@@ -10,10 +10,20 @@ on:
       - 'backend/**'
       - 'deployments/**'
       - '.github/workflows/deploy-backend.yml'
+  # Temporary: every push to this branch deploys, while the PII-encryption work is
+  # tried out on AWS. Remove this block once the branch is merged into main.
+  push:
+    branches:
+      - feature/Pii_Encryption
+    paths:
+      - 'backend/**'
+      - 'deployments/**'
+      - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
 
 concurrency:
-  group: deploy-backend-${{ github.ref }}
+  # One deploy of this service at a time, whichever branch or event started it.
+  group: deploy-backend
   cancel-in-progress: false
 
 env:
@@ -25,7 +35,7 @@ env:
 jobs:
   deploy-backend:
     name: Build & Deploy Backend
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -33,7 +43,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha || github.ref }}
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
