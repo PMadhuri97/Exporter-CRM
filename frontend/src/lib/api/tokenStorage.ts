@@ -5,7 +5,9 @@
 // Read outside React (by `apiClient.ts`, before any component has mounted)
 // so this is a plain module-level store with a subscribe/notify pair, not a
 // context — `AuthProvider` is the thing that turns this into React state.
-const REFRESH_TOKEN_STORAGE_KEY = 'aner.refreshToken';
+import { recordRenewal, setSessionIdleTimeout } from './sessionActivity';
+
+export const REFRESH_TOKEN_STORAGE_KEY = 'aner.refreshToken';
 
 // Refresh this many ms before actual expiry, so a request that starts just
 // under the wire doesn't race the token's own deadline.
@@ -49,7 +51,12 @@ export function setTokens(params: {
   accessToken: string;
   refreshToken: string;
   expiresInSeconds: number;
+  /** The server's inactivity timeout, from the same response. */
+  sessionIdleTimeoutSeconds?: number;
 }): void {
+  if (params.sessionIdleTimeoutSeconds) setSessionIdleTimeout(params.sessionIdleTimeoutSeconds);
+  // A new pair is the server's window starting again.
+  recordRenewal();
   state = {
     accessToken: params.accessToken,
     accessTokenExpiresAt: Date.now() + params.expiresInSeconds * 1000,

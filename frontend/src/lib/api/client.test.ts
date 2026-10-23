@@ -57,6 +57,9 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   localStorage.clear();
+  // Someone using the page a moment ago: these tests are about rotation in a live
+  // session, and a session with no recorded activity counts as timed out.
+  localStorage.setItem('aner.lastActivity', String(Date.now()));
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -189,5 +192,47 @@ describe('refreshSession', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(store.getRefreshToken()).toBeNull();
     expect(signedOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes on the server's reason for refusing", async () => {
+    const { client } = await openTab();
+    localStorage.setItem(REFRESH_KEY, 'r1');
+    const signedOut = vi.fn();
+    client.registerRefreshFailureHandler(signedOut);
+    fetchMock.mockResolvedValue(
+      json({ detail: 'Session reached its maximum length; sign in again' }, 401),
+    );
+
+    await expect(client.refreshSession()).rejects.toThrow();
+
+    expect(signedOut).toHaveBeenCalledWith('Session reached its maximum length; sign in again');
+  });
+});
+
+describe('a session nobody has used for the inactivity timeout', () => {
+  it('is not renewed: the tokens go without asking the server, and the reason is given', async () => {
+    const { client, store } = await openTab();
+    localStorage.setItem(REFRESH_KEY, 'r1');
+    localStorage.setItem('aner.sessionIdleTimeoutMs', String(30 * 60_000));
+    localStorage.setItem('aner.lastActivity', String(Date.now() - 31 * 60_000));
+    const signedOut = vi.fn();
+    client.registerRefreshFailureHandler(signedOut);
+
+    await expect(client.refreshSession()).rejects.toThrow(client.IDLE_SIGN_OUT_MESSAGE);
+
+    // Not renewed, so the server's own window runs out too.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.getRefreshToken()).toBeNull();
+    expect(signedOut).toHaveBeenCalledWith(client.IDLE_SIGN_OUT_MESSAGE);
+  });
+
+  it('keeps the timeout the server gives with each pair of tokens', async () => {
+    const { client } = await openTab();
+    localStorage.setItem(REFRESH_KEY, 'r1');
+    fetchMock.mockResolvedValue(json({ ...tokens('r2'), session_idle_timeout: 3600 }));
+
+    await client.refreshSession();
+
+    expect(localStorage.getItem('aner.sessionIdleTimeoutMs')).toBe(String(3600 * 1000));
   });
 });

@@ -15,6 +15,7 @@ import { useCurrentUser } from '@/platform/auth';
 import { ShellProvider, useShellState } from '@/platform/shell';
 
 import { AppHeader } from './AppHeader';
+import { IdleWarning } from './IdleWarning';
 import { ShortcutList } from './ShortcutList';
 import { NavDrawer, SideNav } from './SideNav';
 import { useGlobalShortcuts } from './useGlobalShortcuts';
@@ -73,6 +74,7 @@ function Workspace() {
       </div>
       <NavDrawer role={role} open={navOpen} onOpenChange={setNavOpen} />
       <ShortcutList open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <IdleWarning />
     </div>
   );
 }
@@ -88,6 +90,7 @@ export function AppShell() {
         <Suspense fallback={<ScreenLoading />}>
           <Outlet />
         </Suspense>
+        <IdleWarning />
       </NoWorkspaceFrame>
     );
   }

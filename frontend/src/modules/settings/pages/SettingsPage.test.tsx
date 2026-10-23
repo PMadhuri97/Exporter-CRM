@@ -97,6 +97,9 @@ function signedInWith(
     user: null,
     login: vi.fn(),
     logout: vi.fn(),
+    endReason: null,
+    idleWarningSeconds: null,
+    staySignedIn: vi.fn(),
   });
   vi.mocked(getMyPermissions).mockResolvedValue({
     role: 'ADMIN',

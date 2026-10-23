@@ -8550,6 +8550,11 @@ export interface components {
              * @description Access token lifetime in seconds
              */
             expires_in: number;
+            /**
+             * Session Idle Timeout
+             * @description Seconds of inactivity after which the session ends (SESSION_IDLE_TIMEOUT_MINUTES). The refresh token expires that long after it is issued, so the browser must refresh within it, and only for someone using the page.
+             */
+            session_idle_timeout: number;
         };
         /**
          * TradeCounterparty
