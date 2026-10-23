@@ -61,7 +61,9 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     GstRegistrationFlag,
     GstRegistrationStatus,
 )
+from app.modules.onboarding.domain.sealed_columns import GSTIN
 from app.platform.database.models import AnerModel
+from app.platform.security.sealed_type import SEALED_SQL
 
 SCHEMA = "onboarding"
 
@@ -80,13 +82,18 @@ class ExporterGstin(AnerModel):
         Index("ix_exporter_gstin_gstin", "gstin"),
         # The GSTIN's shape (0014): a two-digit state code, the holder's PAN, an entity
         # number, `Z`, and a check character.
+        # A sealed GSTIN passes on its shape (0064): `SealedString` only seals one that
+        # is well formed, so a malformed GSTIN still arrives plain and is refused here.
         CheckConstraint(
-            "gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'",
+            "gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'"
+            f" OR gstin ~ '{SEALED_SQL}'",
             name="ck_exporter_gstin_format",
         ),
         # `state_code` is derived from the GSTIN, so it may not contradict it (0054).
+        # The database can only check that against a plain GSTIN; for a sealed one the
+        # service's `state_code_of` keeps the two in step.
         CheckConstraint(
-            "state_code IS NULL OR state_code = left(gstin, 2)",
+            f"state_code IS NULL OR gstin ~ '{SEALED_SQL}' OR state_code = left(gstin, 2)",
             name="ck_exporter_gstin_state_code",
         ),
         # A flag must say why. Enforced here and not only in the service
@@ -120,7 +127,9 @@ class ExporterGstin(AnerModel):
         ForeignKey(f"{SCHEMA}.exporter_profile.customer_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    gstin: Mapped[str] = mapped_column(String(15), nullable=False)
+    #: **Encrypted** (AES-SIV, ``sealed_columns.GSTIN``) when written since 0064; older
+    #: rows are plain. Both read back as the GSTIN, and `==` / `in_()` find both.
+    gstin: Mapped[str] = mapped_column(GSTIN, nullable=False)
 
     # ── The branch ───────────────────────────────────────────────────────────
 

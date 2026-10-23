@@ -117,6 +117,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
 )
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
+from app.modules.onboarding.domain.sealed_columns import registration_number_matches
 from app.modules.onboarding.domain.tax_identifiers import GSTIN_RE, PAN_RE, embedded_pan
 from app.platform.database import services as db_services
 
@@ -471,16 +472,16 @@ async def _pan_holders(db: AsyncSession, pan: str) -> set[uuid.UUID]:
     if holders:
         return holders
     # A company created from a GSTIN-only delivery holds the GSTIN but no PAN.
-    return set(
-        await db.scalars(
-            select(ExporterGstin.customer_id)
-            .where(
-                ExporterGstin.gstin.like(f"__{pan}%"),
-                ExporterGstin.active.is_(True),
-            )
-            .distinct()
+    #
+    # Characters 3–12 of a GSTIN are its holder's PAN. That used to be
+    # `gstin LIKE '__<pan>%'`, which a sealed GSTIN (0064) can never match, so the
+    # active GSTINs are read back — opened by the column type — and compared here.
+    rows = await db.execute(
+        select(ExporterGstin.gstin, ExporterGstin.customer_id).where(
+            ExporterGstin.active.is_(True)
         )
     )
+    return {customer_id for gstin, customer_id in rows.all() if gstin[2:12] == pan}
 
 
 async def _registration_holders(
@@ -492,10 +493,9 @@ async def _registration_holders(
             select(ExporterProfile.customer_id).where(
                 ExporterProfile.country == country,
                 ExporterProfile.registration_number.isnot(None),
-                text(
-                    "upper(regexp_replace(exporter_profile.registration_number, "
-                    "'[^A-Za-z0-9]', '', 'g')) = :key"
-                ).bindparams(key=key),
+                # Plain rows the old way, sealed ones on their key (0065). `key` is
+                # already `registration_key(...)`, which is idempotent.
+                registration_number_matches(ExporterProfile.registration_number, key),
             )
         )
     )

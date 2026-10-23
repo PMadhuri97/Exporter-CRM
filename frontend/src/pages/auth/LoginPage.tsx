@@ -20,7 +20,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
-  const { status, login } = useAuth();
+  const { status, login, endReason } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -67,6 +67,13 @@ export function LoginPage() {
               className="mt-8 space-y-4"
               noValidate
             >
+              {/* Why the last session ended, when it was not a sign-out by hand. A
+                  notice, not an error: nothing went wrong. Gone with the next sign-in. */}
+              {endReason && !serverError && (
+                <p role="status" className="rounded-md bg-sunken px-3 py-2 text-body text-ink-2">
+                  {endReason}
+                </p>
+              )}
               <FormError>{serverError}</FormError>
 
               <Field label="Email" htmlFor="email" error={errors.email?.message}>

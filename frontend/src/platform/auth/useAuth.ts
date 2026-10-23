@@ -15,6 +15,13 @@ export interface AuthContextValue {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Why the last session ended, when it was not the person's own sign-out — shown on
+   * the sign-in page ("signed out after a period of inactivity"). */
+  endReason: string | null;
+  /** Seconds left before the inactivity timeout, while the warning is due; else null. */
+  idleWarningSeconds: number | null;
+  /** The warning's "Stay signed in": counts as activity, in every tab. */
+  staySignedIn: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

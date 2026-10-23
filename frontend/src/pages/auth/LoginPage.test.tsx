@@ -86,6 +86,21 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Email or password is incorrect.');
   });
 
+  it('says why the last session ended, as a notice rather than an error', () => {
+    vi.mocked(useAuth).mockReturnValue({
+      status: 'unauthenticated',
+      user: null,
+      login,
+      logout: vi.fn(),
+      endReason: 'You were signed out after a period of inactivity.',
+    } as unknown as ReturnType<typeof useAuth>);
+    renderAt();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'You were signed out after a period of inactivity.',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('sends a signed-in user to Home, never to a page left open before signing out', () => {
     vi.mocked(useAuth).mockReturnValue({
       status: 'authenticated',

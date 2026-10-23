@@ -39,6 +39,7 @@ from app.modules.onboarding.domain.entities.document_enums import (
     DocumentSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
+from app.modules.onboarding.domain.entities.exporter_profile import in_gstin_order
 from app.modules.onboarding.exceptions import BuyerCompanyAlreadyKnownError
 from app.platform.database import services as db_services
 
@@ -156,17 +157,21 @@ async def _ensure_invoicing_branch(company_id: uuid.UUID, deal_id: uuid.UUID) ->
             # A closed deal's branch is frozen, and rightly: it is what the lending
             # team was given.
             return
-        branch = await db.scalar(
-            select(ExporterGstin)
-            .where(
-                ExporterGstin.customer_id == company_id,
-                ExporterGstin.active.is_(True),
+        # The first active branch, GSTIN breaking a `created_at` tie — in Python,
+        # because the column holds a ciphertext (0064).
+        branches = in_gstin_order(
+            list(
+                await db.scalars(
+                    select(ExporterGstin).where(
+                        ExporterGstin.customer_id == company_id,
+                        ExporterGstin.active.is_(True),
+                    )
+                )
             )
-            .order_by(ExporterGstin.created_at, ExporterGstin.gstin)
-            .limit(1)
         )
-        if branch is None:
+        if not branches:
             return
+        branch = branches[0]
         await DealService(db).set_invoicing_branch(
             deal_id, gst_registration_id=branch.id, actor_id=None
         )

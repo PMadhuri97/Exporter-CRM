@@ -11,6 +11,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api/errors';
 import type { UserRole } from '@/lib/api/types';
 import { useCurrentUser } from '@/platform/auth';
 
@@ -93,6 +94,33 @@ describe('Directors and owners', () => {
     expect(await screen.findByText('Ravi Kumar')).toBeInTheDocument();
     expect(screen.queryByText('Front Desk')).not.toBeInTheDocument();
     expect(listExporterContacts).toHaveBeenCalledWith(CUSTOMER_ID, 'ALL');
+  });
+
+  it('says in the form which person already holds a DIN, and stays open', async () => {
+    as('COMPLIANCE');
+    vi.mocked(addExporterContact).mockRejectedValue(
+      new ApiError(
+        409,
+        'This DIN is already recorded for Nirup at this company.',
+        'EXPORTER_PERSON_DIN_ALREADY_EXISTS',
+        null,
+        { name: 'Nirup', field: 'din' },
+      ),
+    );
+    renderCard([]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
+
+    // A new person starts as a director, so the DIN field is already there.
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Nithin' } });
+    fireEvent.change(screen.getByLabelText(/^DIN/), { target: { value: '12345678' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }));
+
+    expect(
+      await screen.findByText('This DIN is already recorded for Nirup at this company.'),
+    ).toBeInTheDocument();
+    // Still open, holding what was typed, so the DIN can be corrected and saved again.
+    expect(screen.getByLabelText(/^DIN/)).toHaveValue('12345678');
+    expect(screen.getByRole('button', { name: 'Add person' })).toBeInTheDocument();
   });
 
   it('adds a beneficial owner with the owner-only fields', async () => {

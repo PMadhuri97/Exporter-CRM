@@ -60,6 +60,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
+from app.modules.onboarding.domain.sealed_columns import (
+    BUYER_CONTACT_EMAIL,
+    BUYER_CONTACT_PHONE,
+    BUYER_REGISTRATION_NUMBER,
+    BUYER_TAX_ID,
+)
 from app.platform.database.models import AnerModel
 
 if TYPE_CHECKING:
@@ -139,10 +145,16 @@ class DealBuyer(DatabaseGeneratedId, AnerModel):
     #: Whatever the buyer's own jurisdiction issues — not validated by shape,
     #: because a buyer is foreign by definition and India's PAN/GSTIN rules do
     #: not apply to it.
-    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    tax_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    #:
+    #: These four are **encrypted** (AES-SIV, ``sealed_columns``) when written since
+    #: 0064. A legacy buyer is frozen (`trg_deal_buyer_frozen`: no insert, no edit), so
+    #: in practice every existing row stays plain until it is re-sealed deliberately.
+    registration_number: Mapped[str | None] = mapped_column(
+        BUYER_REGISTRATION_NUMBER, nullable=True
+    )
+    tax_id: Mapped[str | None] = mapped_column(BUYER_TAX_ID, nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(BUYER_CONTACT_EMAIL, nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(BUYER_CONTACT_PHONE, nullable=True)
 
     # ── The buyer migration's answer: set once, all together ─────────────────
     mapped_company_id: Mapped[uuid.UUID | None] = mapped_column(

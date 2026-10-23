@@ -12,7 +12,7 @@
  * company's screening on "never screened" for that person.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -22,12 +22,14 @@ import {
   EmptyLine,
   Field,
   FormPanel,
+  InlineError,
   Input,
   RequiredNote,
   Select,
   Skeleton,
 } from '@/components';
 import { Icon } from '@/design/icons';
+import { ApiError } from '@/lib/api/errors';
 import { useCanRevealIdentifiersOnce } from '@/platform/access';
 
 import { countryLabel } from '../countries';
@@ -235,6 +237,8 @@ function PersonFields({
 
 function AddPersonForm({ customerId, onDone }: { customerId: string; onDone: () => void }) {
   const mutation = useAddExporterContact(customerId);
+  /** Why the last save was refused (a DIN another person holds), shown in the form. */
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState<PersonForm>(EMPTY);
   const blocked = problem(form, false);
 
@@ -260,12 +264,16 @@ function AddPersonForm({ customerId, onDone }: { customerId: string; onDone: () 
       identification_type: form.identification_type || null,
       identification_number: text(form.identification_number),
     };
+    setRefusal(null);
     try {
       await mutation.mutateAsync(payload);
       toast.success('Person added');
       onDone();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not add the person');
+      // In the form, as for a contact's email or phone: a DIN another person of this
+      // company already holds is refused, and the message names them.
+      if (error instanceof ApiError) setRefusal(error.message);
+      else toast.error(error instanceof Error ? error.message : 'Could not add the person');
     }
   }
 
@@ -274,6 +282,7 @@ function AddPersonForm({ customerId, onDone }: { customerId: string; onDone: () 
       <RequiredNote />
       <PersonFields form={form} setForm={setForm} hidden={false} />
       {blocked && form.name.trim() && <p className="text-secondary text-ink-3">{blocked}</p>}
+      {refusal && <InlineError>{refusal}</InlineError>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={Boolean(blocked)} loading={mutation.isPending}>
@@ -299,6 +308,8 @@ function EditPersonForm({
   onDone: () => void;
 }) {
   const mutation = useUpdateExporterContact(customerId);
+  /** Why the last save was refused (a DIN another person holds), shown in the form. */
+  const [refusal, setRefusal] = useState<string | null>(null);
   // Fixed once the server has answered, then kept for the life of the form. Read live
   // it could flip from false to true mid-edit, leaving the fields initialised empty
   // and saving that as a deliberate clear; frozen on the *first* answer instead, a
@@ -320,6 +331,20 @@ function EditPersonForm({
     identification_type: (person.identification_type as IdentificationType | null) ?? '',
     identification_number: masked(person.identification_number),
   });
+  // As in `EditContactForm`: permissions that land after the form opened switch it to
+  // revealed with the masked boxes still empty, and a save would clear them. On that
+  // switch, and only then, each empty box takes the real value.
+  const revealedAtOpen = useRef(mayReveal);
+  useEffect(() => {
+    if (!mayReveal || revealedAtOpen.current) return;
+    revealedAtOpen.current = true;
+    setForm((prev) => ({
+      ...prev,
+      din: prev.din || (person.din ?? ''),
+      date_of_birth: prev.date_of_birth || (person.date_of_birth ?? ''),
+      identification_number: prev.identification_number || (person.identification_number ?? ''),
+    }));
+  }, [mayReveal, person.din, person.date_of_birth, person.identification_number]);
   // A masked number left empty is "unchanged", so a type alone is fine then.
   const blocked = problem(form, mayReveal);
 
@@ -359,12 +384,14 @@ function EditPersonForm({
       onDone();
       return;
     }
+    setRefusal(null);
     try {
       await mutation.mutateAsync({ contactId: person.id, payload });
       toast.success('Person updated');
       onDone();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not update the person');
+      if (error instanceof ApiError) setRefusal(error.message);
+      else toast.error(error instanceof Error ? error.message : 'Could not update the person');
     }
   }
 
@@ -373,6 +400,7 @@ function EditPersonForm({
       <RequiredNote />
       <PersonFields form={form} setForm={setForm} hidden={!mayReveal} />
       {blocked && <p className="text-secondary text-ink-3">{blocked}</p>}
+      {refusal && <InlineError>{refusal}</InlineError>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={Boolean(blocked)} loading={mutation.isPending}>

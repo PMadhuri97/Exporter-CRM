@@ -37,6 +37,7 @@ from app.platform.authentication.services import (
     hash_password,
     hash_refresh_token,
     refresh_token_expiry,
+    session_max_end,
     verify_password,
 )
 from app.platform.authorization.services import require_permission
@@ -231,10 +232,12 @@ async def login(
     raw_refresh, refresh_hash = generate_refresh_token()
 
     from app.platform.authentication.models import RefreshToken
+    started_at = datetime.now(tz=UTC)
     db_token = RefreshToken(
         user_id=user.id,
         token_hash=refresh_hash,
-        expires_at=refresh_token_expiry(),
+        expires_at=refresh_token_expiry(started_at),
+        session_started_at=started_at,
         revoked=False,
     )
     await token_repo.create(db_token)
@@ -246,10 +249,15 @@ async def login(
 
     logger.info("user_login", user_id=str(user.id), role=user.role.value)
     await db.commit()  # before the response is sent — see the note above `router`
+    return _tokens(access_token, raw_refresh)
+
+
+def _tokens(access_token: str, raw_refresh: str) -> TokenResponse:
     return TokenResponse(
         access_token=access_token,
         refresh_token=raw_refresh,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        session_idle_timeout=settings.session_idle_timeout_minutes * 60,
     )
 
 
@@ -290,8 +298,12 @@ async def refresh(
 
     if db_token is None or db_token.revoked:
         raise UnauthorizedError("Invalid or revoked refresh token")
-    if db_token.expires_at < datetime.now(tz=UTC):
-        raise UnauthorizedError("Refresh token has expired")
+    now = datetime.now(tz=UTC)
+    if db_token.expires_at < now:
+        # Both limits end a session by expiring its token; say which one did.
+        if now >= session_max_end(db_token.session_started_at):
+            raise UnauthorizedError("Session reached its maximum length; sign in again")
+        raise UnauthorizedError("Session ended after inactivity; sign in again")
 
     user = db_token.user
     if not user.is_active:
@@ -307,7 +319,10 @@ async def refresh(
     new_token = RefreshToken(
         user_id=user.id,
         token_hash=new_hash,
-        expires_at=refresh_token_expiry(),
+        # Counted from the sign-in, not this refresh: a rotation renews the inactivity
+        # window and nothing else.
+        expires_at=refresh_token_expiry(db_token.session_started_at),
+        session_started_at=db_token.session_started_at,
         revoked=False,
     )
     await token_repo.create(new_token)
@@ -329,11 +344,7 @@ async def refresh(
 
     logger.info("token_refreshed", user_id=str(user.id))
     await db.commit()  # before the response is sent — see the note above `router`
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=raw_refresh,
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    return _tokens(access_token, raw_refresh)
 
 
 @router.post(

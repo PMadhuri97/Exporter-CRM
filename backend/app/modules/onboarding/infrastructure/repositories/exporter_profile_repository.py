@@ -9,7 +9,6 @@ from typing import Any
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.onboarding.domain.company_identity import registration_key
 from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
@@ -26,6 +25,7 @@ from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.domain.entities.trade_relationship import TradeRelationship
+from app.modules.onboarding.domain.sealed_columns import registration_number_matches
 from app.platform.authentication.models import User
 from app.platform.database.adapters.repository import BaseRepository
 
@@ -53,20 +53,19 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         """The company holding this registration number in this country — at most
         one (``uq_exporter_profile_country_registration_number``).
 
-        Matched through the index's own expression, written here as the same SQL,
-        so this finds exactly the row the constraint would refuse. Comparing the
-        stored text instead would miss ``KVK 12.345`` when asked for ``kvk-12345``
-        and report "no holder" for a number the insert then rejects.
+        Matched through the indexes' own expressions (``registration_number_matches``:
+        the old one for a row written before 0065, the sealed key for one since), so
+        this finds exactly the row a constraint would refuse. Comparing the stored
+        text instead would miss ``KVK 12.345`` when asked for ``kvk-12345`` and
+        report "no holder" for a number the insert then rejects.
         """
-        normalised = func.upper(
-            func.regexp_replace(ExporterProfile.registration_number, "[^A-Za-z0-9]", "", "g")
-        )
-        wanted = registration_key(registration_number)
         result = await self.session.execute(
             select(ExporterProfile).where(
                 ExporterProfile.country == country.strip().upper(),
                 ExporterProfile.registration_number.isnot(None),
-                normalised == wanted,
+                registration_number_matches(
+                    ExporterProfile.registration_number, registration_number
+                ),
             )
         )
         return result.scalar_one_or_none()
@@ -122,10 +121,11 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
                 ExporterGstin.gstin.in_(gstins),
                 ExporterGstin.customer_id != customer_id,
             )
-            .order_by(ExporterGstin.gstin, ExporterGstin.customer_id)
         )
         holders: dict[str, list[uuid.UUID]] = {}
-        for gstin, holder in result.all():
+        # Sorted here rather than in SQL: the column holds a ciphertext (0064), and the
+        # same GSTIN can be stored both plain and sealed.
+        for gstin, holder in sorted(result.all(), key=lambda row: (row[0], str(row[1]))):
             holders.setdefault(gstin, []).append(holder)
         return holders
 

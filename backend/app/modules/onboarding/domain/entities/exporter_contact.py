@@ -44,13 +44,12 @@ reached in normal operation.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
-    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -63,7 +62,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
+from app.modules.onboarding.domain.sealed_columns import CONTACT_DIN, DIN_PATTERN
 from app.platform.database.models import AnerModel
+from app.platform.security.sealed_type import SEALED_SQL
 
 SCHEMA = "onboarding"
 
@@ -107,8 +108,11 @@ class ExporterContact(AnerModel):
         CheckConstraint(
             "NOT is_primary_contact OR is_contact", name="ck_exporter_contact_primary_is_contact"
         ),
+        # A sealed DIN cannot be read by a regex, so it passes on its shape (0064);
+        # `SealedString` only seals a DIN that already has the eight digits.
         CheckConstraint(
-            "din IS NULL OR (is_director AND din ~ '^[0-9]{8}$')", name="ck_exporter_contact_din"
+            f"din IS NULL OR (is_director AND (din ~ '{DIN_PATTERN}' OR din ~ '{SEALED_SQL}'))",
+            name="ck_exporter_contact_din",
         ),
         CheckConstraint(
             "ownership_pct IS NULL OR (is_ubo AND ownership_pct >= 0 AND ownership_pct <= 100)",
@@ -152,8 +156,14 @@ class ExporterContact(AnerModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    #: **Encrypted** (AES-SIV, ``contact_privacy.EMAIL_PURPOSE``), holding the trimmed,
+    #: lower-cased address rather than what was typed. Deterministic so the column can
+    #: still be compared; 512 to fit the ciphertext.
+    email: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    #: **Encrypted** (AES-SIV, ``contact_phone.PHONE_PURPOSE``), holding the canonical
+    #: spelling from ``normalise_phone`` rather than the characters anybody typed.
+    #: Deterministic so the column can still be compared; 512 to fit the ciphertext.
+    phone: Mapped[str | None] = mapped_column(String(512), nullable=True)
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_primary_contact: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
@@ -178,12 +188,19 @@ class ExporterContact(AnerModel):
     is_ubo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
     # ── Person fields; all optional ──────────────────────────────────────────
-    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: **Encrypted** (AES-GCM, ``contact_privacy.DATE_OF_BIRTH_PURPOSE``), holding the
+    #: ISO form. Text rather than ``Date`` because a ciphertext is text: the database no
+    #: longer knows this is a date, so ordering and age arithmetic happen after
+    #: decrypting. A random nonce, not the deterministic seal `email` and `phone` use —
+    #: nothing compares a date of birth, so it leaks not even a shared birthday.
+    date_of_birth: Mapped[str | None] = mapped_column(String(512), nullable=True)
     #: ISO-3166-1 alpha-2.
     nationality: Mapped[str | None] = mapped_column(String(2), nullable=True)
     residence_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     #: Director Identification Number (India): eight digits. A director's only.
-    din: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    #: **Encrypted** (AES-SIV, ``sealed_columns.CONTACT_DIN``) when written since 0064;
+    #: older rows are plain, and both read back as the number.
+    din: Mapped[str | None] = mapped_column(CONTACT_DIN, nullable=True)
     #: A beneficial owner's only.
     ownership_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     control_type: Mapped[str | None] = mapped_column(String(24), nullable=True)

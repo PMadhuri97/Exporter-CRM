@@ -9,7 +9,7 @@
  * the server's total, not the length of what is shown.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -301,6 +301,21 @@ function EditContactForm({
     status: contact.status as ContactStatus,
     reason: '',
   });
+  // The answer can still arrive after the form opened, if the permissions were loading.
+  // The fields were then initialised empty, as for a masked viewer, and with `mayReveal`
+  // now true the save would read an empty box as a deliberate clear. So on that switch,
+  // and only then, each box still empty takes the real value; one already typed into
+  // keeps what was typed.
+  const revealedAtOpen = useRef(mayReveal);
+  useEffect(() => {
+    if (!mayReveal || revealedAtOpen.current) return;
+    revealedAtOpen.current = true;
+    setForm((prev) => ({
+      ...prev,
+      email: prev.email || (contact.email ?? ''),
+      phone: prev.phone || (contact.phone ?? ''),
+    }));
+  }, [mayReveal, contact.email, contact.phone]);
   const statusChanged = form.status !== contact.status;
   const active = form.status === 'ACTIVE';
   // Leaving Active needs a reason; the server refuses one without.

@@ -38,6 +38,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions, people
+from app.modules.onboarding.domain.contact_phone import open_phone, seal_phone
+from app.modules.onboarding.domain.contact_privacy import (
+    normalise_email,
+    open_email,
+    seal_date_of_birth,
+    seal_email,
+)
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ContactStatus,
@@ -48,6 +55,7 @@ from app.modules.onboarding.domain.entities.exporter_contact import ExporterCont
 from app.modules.onboarding.exceptions import (
     ActivityDueInPastError,
     ContactNotActiveError,
+    DirectorDinAlreadyExistsError,
     ExporterContactAlreadyExistsError,
     ExporterContactNotFoundError,
     ExporterContactPrimaryConflictError,
@@ -120,16 +128,43 @@ class ExporterContactActivityService:
         if not matches:
             return
 
-        wanted_email = (email or "").strip().lower()
+        wanted_email = normalise_email(email)
         other = matches[0]
         # Which field matched, so the form can say which line to change. The email is
         # the more telling of the two when both do.
-        matched_email = bool(wanted_email) and (other.email or "").strip().lower() == wanted_email
+        #
+        # Opened before comparing: the column holds a sealed value, and comparing the
+        # stored text to what was typed said "no" every time — so a refusal over an
+        # email address named the phone instead.
+        matched_email = wanted_email is not None and (
+            normalise_email(open_email(other.email)) == wanted_email
+        )
         raise ExporterContactAlreadyExistsError(
             contact_id=other.id,
             name=other.name,
             field="email" if matched_email else "phone",
         )
+
+    async def _refuse_a_duplicate_din(
+        self, customer_id: uuid.UUID, din: str | None, *, exclude_id: uuid.UUID | None = None
+    ) -> None:
+        """Refuse a DIN another person of this company already holds.
+
+        A DIN is issued to one individual for life, so a second holder at one company is
+        a mistake on one of the two records (``DirectorDinAlreadyExistsError`` says which
+        person to look at). Other companies are not looked at: the same director sitting
+        on two boards is ordinary.
+
+        Not autoflushed: on an edit the change is already on the row, and the lookup
+        must not write it before ``people.check_person`` has had its say — a DIN on a
+        non-director would reach the database as a 500 rather than a 422.
+        """
+        if not din:
+            return
+        with self._db.no_autoflush:
+            other = await self._contacts.other_holding_din(customer_id, din, exclude_id=exclude_id)
+        if other is not None:
+            raise DirectorDinAlreadyExistsError(contact_id=other.id, name=other.name)
 
     async def add_contact(
         self,
@@ -172,6 +207,7 @@ class ExporterContactActivityService:
         # would otherwise both read "no duplicate" and both write.
         await self._contacts.lock_company(customer_id)
         await self._refuse_a_duplicate(customer_id, email=email, phone=phone)
+        await self._refuse_a_duplicate_din(customer_id, (details or {}).get("din"))  # type: ignore[arg-type]
 
         fields = dict(details or {})
         number = fields.pop("identification_number", None)
@@ -179,14 +215,21 @@ class ExporterContactActivityService:
             customer_id=customer_id,
             name=name,
             role=role,
-            email=email,
-            phone=phone,
+            email=seal_email(email),
+            phone=seal_phone(phone),
             department=department,
             is_primary_contact=is_primary,
             is_contact=is_contact,
             is_director=is_director,
             is_ubo=is_ubo,
-            **{field: fields.get(field) for field in people.PERSON_FIELDS},
+            **{
+                field: (
+                    seal_date_of_birth(fields.get(field))
+                    if field == "date_of_birth"
+                    else fields.get(field)
+                )
+                for field in people.PERSON_FIELDS
+            },
         )
         if number:
             set_identification_number(contact, str(number))
@@ -249,6 +292,15 @@ class ExporterContactActivityService:
             raise ExporterContactNotFoundError(customer_id, contact_id)
 
         fields = dict(changes)
+        # Sealed before the loop below sets it: `changes` carries what the caller sent,
+        # and the column holds a ciphertext of the canonical number, never the string
+        # that was typed. Absent means "leave it alone"; present and null clears it.
+        if "phone" in fields:
+            fields["phone"] = seal_phone(fields["phone"])
+        if "email" in fields:
+            fields["email"] = seal_email(fields["email"])
+        if "date_of_birth" in fields:
+            fields["date_of_birth"] = seal_date_of_birth(fields["date_of_birth"])
         promote = fields.pop("is_primary", None)
         number_sent = "identification_number" in fields
         number = fields.pop("identification_number", None)
@@ -268,10 +320,21 @@ class ExporterContactActivityService:
             await self._contacts.lock_company(customer_id)
             await self._refuse_a_duplicate(
                 customer_id,
-                email=contact.email,
-                phone=contact.phone,
+                # Opened first: these columns hold sealed values, and the check takes
+                # the details as a person would type them — it seals them itself, and
+                # also compares against rows written before the columns were sealed.
+                email=open_email(contact.email),
+                phone=open_phone(contact.phone),
                 exclude_id=contact_id,
             )
+
+        # On the DIN the edit leaves behind, so a change that only made the person a
+        # director again is not checked — their DIN was cleared when the role went.
+        if "din" in fields:
+            # The lock is a query too, and would flush the edited row just the same.
+            with self._db.no_autoflush:
+                await self._contacts.lock_company(customer_id)
+            await self._refuse_a_duplicate_din(customer_id, contact.din, exclude_id=contact_id)
 
         if promote is not None:
             if promote and contact.status != ContactStatus.ACTIVE.value:
@@ -340,8 +403,11 @@ class ExporterContactActivityService:
             await self._contacts.lock_company(customer_id)
             await self._refuse_a_duplicate(
                 customer_id,
-                email=contact.email,
-                phone=contact.phone,
+                # Opened first: these columns hold sealed values, and the check takes
+                # the details as a person would type them — it seals them itself, and
+                # also compares against rows written before the columns were sealed.
+                email=open_email(contact.email),
+                phone=open_phone(contact.phone),
                 exclude_id=contact_id,
             )
 

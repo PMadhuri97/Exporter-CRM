@@ -23,6 +23,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     StringConstraints,
     ValidationInfo,
     computed_field,
@@ -37,6 +38,11 @@ from app.modules.onboarding.api.schemas.masking import (
     mask_identifier,
     mask_phone,
 )
+from app.modules.onboarding.domain.contact_phone import open_phone
+from app.modules.onboarding.domain.contact_privacy import (
+    open_date_of_birth,
+    open_email,
+)
 from app.modules.onboarding.domain.engagement_views import ConversationView
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ContactStatus,
@@ -47,7 +53,12 @@ from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourne
 from app.modules.onboarding.domain.people import IDENTIFICATION_PURPOSE
 from app.platform.authentication.models import User
 from app.platform.configuration.config import settings
-from app.platform.security.field_cipher import decrypt_field
+from app.platform.security.field_cipher import (
+    FieldDecryptionError,
+    decrypt_field,
+    is_deterministic_ciphertext,
+    is_random_ciphertext,
+)
 
 #: A contact's name, trimmed before it is measured: "   " is not a name, and without the
 #: trim it would pass ``min_length=1`` and save a contact nobody can find or act on.
@@ -206,6 +217,11 @@ class ExporterContactResponse(BaseModel):
     source: str | None = None
     identification_encrypted: str | None = Field(default=None, exclude=True)
     identification_last4: str | None = Field(default=None, exclude=True)
+    #: The phone column as stored, kept so `masked_for` can reveal after
+    #: `_sealed_values_never_served` has masked the public fields. Never serialised.
+    _sealed_phone: str | None = PrivateAttr(default=None)
+    _sealed_email: str | None = PrivateAttr(default=None)
+    _sealed_dob: str | None = PrivateAttr(default=None)
 
     @field_validator("date_of_birth", mode="before")
     @classmethod
@@ -218,6 +234,38 @@ class ExporterContactResponse(BaseModel):
         # only `masked_for` a viewer who may see it decrypts it.
         if self.identification_number is None and self.identification_last4:
             self.identification_number = f"••••{self.identification_last4}"
+        return self
+
+    @model_validator(mode="after")
+    def _sealed_values_never_served(self) -> ExporterContactResponse:
+        """Fail closed, as the identification number does.
+
+        ``phone``, ``email`` and ``date_of_birth`` hold ciphertexts, and a response
+        built without ``masked_for`` would otherwise serve them raw — nothing secret
+        escapes, but they are values no client can use and none should ever see.
+        Masked here, so every path starts masked and only ``masked_for`` reveals.
+
+        Each sealed value is kept privately, because the response is built once and may
+        be revealed afterwards. One that will not decrypt is emptied rather than passed
+        on: a stored value no key opens is a broken row, not a contact detail.
+        """
+        if is_deterministic_ciphertext(self.phone):
+            self._sealed_phone = self.phone
+            try:
+                self.phone = mask_phone(open_phone(self._sealed_phone))
+            except FieldDecryptionError:
+                self.phone = None
+        if is_deterministic_ciphertext(self.email):
+            self._sealed_email = self.email
+            try:
+                self.email = mask_email(open_email(self._sealed_email))
+            except FieldDecryptionError:
+                self.email = None
+        if is_random_ciphertext(self.date_of_birth):
+            self._sealed_dob = self.date_of_birth
+            # Masked to the fixed `MASKED_DATE`, which says "there is one" and nothing
+            # more — so this never needs the key to render a masked response.
+            self.date_of_birth = MASKED_DATE
         return self
 
     @computed_field  # type: ignore[prop-decorator]
@@ -248,15 +296,26 @@ class ExporterContactResponse(BaseModel):
         ``exporters:view_full_tax_id``) sees the person's real email, phone, date of
         birth, DIN and identification number; everyone else sees them masked."""
         if can_reveal_identifiers(viewer):
-            if self.identification_encrypted is None:
-                return self
-            return self.model_copy(
-                update={
-                    "identification_number": decrypt_field(
-                        self.identification_encrypted, purpose=IDENTIFICATION_PURPOSE
-                    )
-                }
-            )
+            update: dict[str, object] = {}
+            # `_phone_never_ciphertext` has already masked it; revealing means going
+            # back to the column. Held on the model for exactly this, because the
+            # response is built once and may be revealed afterwards.
+            for field, sealed, opener in (
+                ("phone", self._sealed_phone, open_phone),
+                ("email", self._sealed_email, open_email),
+                ("date_of_birth", self._sealed_dob, open_date_of_birth),
+            ):
+                if sealed is None:
+                    continue
+                try:
+                    update[field] = opener(sealed)
+                except FieldDecryptionError:
+                    update[field] = None
+            if self.identification_encrypted is not None:
+                update["identification_number"] = decrypt_field(
+                    self.identification_encrypted, purpose=IDENTIFICATION_PURPOSE
+                )
+            return self.model_copy(update=update) if update else self
         return self.masked()
 
 

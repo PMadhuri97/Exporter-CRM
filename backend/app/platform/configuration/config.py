@@ -224,8 +224,19 @@ class Settings(BaseSettings):
     # ── Auth / JWT ────────────────────────────────────────────────────────────
     JWT_SECRET_KEY: str = "change-me-in-production-32-chars-minimum"
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Short, because an access token cannot be revoked: it is what keeps working after
+    # the inactivity timeout has ended the session, until it expires on its own.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
+
+    # ── Auth / session limits ─────────────────────────────────────────────────
+    # A session ends after this long without a token refresh, and the browser
+    # refreshes only for someone actually using it, so this is the inactivity
+    # timeout. Unset, it follows the environment: 30 minutes in production, 60
+    # elsewhere (`session_idle_timeout_minutes`). The refresh token's own lifetime is
+    # this — there is no separate, longer one.
+    SESSION_IDLE_TIMEOUT_MINUTES: int | None = None
+    # However active, a session ends this long after its sign-in.
+    SESSION_MAX_HOURS: int = 12
 
     # ── Auth / self-service sign-up ───────────────────────────────────────────
     # `POST /auth/register` is unauthenticated and always grants API_USER, which
@@ -381,6 +392,13 @@ class Settings(BaseSettings):
     ARCHIVAL_BATCH_SIZE: int = 500          # max records per archival run
     ARCHIVAL_CRON_HOUR: int = 2             # nightly run hour (UTC), 0-23
 
+
+    @property
+    def session_idle_timeout_minutes(self) -> int:
+        """``SESSION_IDLE_TIMEOUT_MINUTES``, or 30 in production and 60 elsewhere."""
+        if self.SESSION_IDLE_TIMEOUT_MINUTES is not None:
+            return self.SESSION_IDLE_TIMEOUT_MINUTES
+        return 30 if self.ENVIRONMENT.strip().lower() in {"production", "prod"} else 60
 
     @property
     def onboarding_enabled_provider_names(self) -> tuple[str, ...]:

@@ -52,6 +52,27 @@ describe('useCanRevealIdentifiersOnce', () => {
     expect(result.current).toBe(false);
   });
 
+  it('answers on the first render when the permissions are already loaded', () => {
+    // The usual case: the company page loaded them long before any edit form opened.
+    // Settled a render late, every form opened `false` and switched to `true`, with its
+    // email and phone initialised empty — and the save cleared them.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['settings', 'myPermissions'], {
+      role_name: 'Compliance',
+      permissions: [REVEAL],
+    });
+    const seen: boolean[] = [];
+
+    renderHook(() => seen.push(useCanRevealIdentifiersOnce()), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+
+    expect(seen[0]).toBe(true);
+    expect(seen).not.toContain(false);
+  });
+
   it('reveals once a late answer says it may', async () => {
     // The fault this hook exists for: the form opened before the permissions landed,
     // and froze the "no" it was given before the server had spoken.

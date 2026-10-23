@@ -99,6 +99,12 @@ class RefreshToken(AnerModel):
     # SHA-256 hex digest of the raw token — raw token is never stored
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: The sign-in this token descends from, copied to each successor on rotation, so
+    #: ``SESSION_MAX_HOURS`` counts from the password and not from the last refresh.
+    #: Rows issued before migration ``auth_0011`` were given their own ``created_at``.
+    session_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -13,6 +13,7 @@ from app.modules.onboarding.application.exporter_contact_activity_service import
     ExporterContactActivityService,
 )
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
+from app.modules.onboarding.domain.contact_privacy import open_email
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.exceptions import (
@@ -147,7 +148,9 @@ async def test_update_contact_changes_only_the_fields_sent():
     assert stored.phone is None
     # Never sent, so never touched.
     assert stored.name == "Jane Doe"
-    assert stored.email == "jane@example.com"
+    # The column holds a ciphertext now, so the assertion opens it rather than
+    # comparing the stored text: what matters here is that the field was left alone.
+    assert open_email(stored.email) == "jane@example.com"
 
 
 async def test_update_contact_promoting_demotes_the_other_primary():

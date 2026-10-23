@@ -502,6 +502,32 @@ class ExporterContactAlreadyExistsError(AnerBaseException):
         )
 
 
+class DirectorDinAlreadyExistsError(AnerBaseException):
+    """Another person of this company already holds this DIN.
+
+    A Director Identification Number is issued to one individual for life, so two
+    people of one company holding the same DIN means one of them is wrong. Refused, as a
+    duplicate email or phone is for contacts, and checked against every status: a
+    director who left is still the person that DIN names — bring that record back rather
+    than adding them again.
+
+    Within one company only. The same DIN on another company is the same person
+    directing two companies, which is ordinary.
+
+    409 naming the person already holding it, so the form can point at them. The DIN is
+    not repeated back, for the reason the contact refusal gives: the response may be
+    read by a role that sees it masked.
+    """
+
+    def __init__(self, *, contact_id: object, name: str) -> None:
+        super().__init__(
+            detail=f"This DIN is already recorded for {name} at this company.",
+            error_code="EXPORTER_PERSON_DIN_ALREADY_EXISTS",
+            status_code=409,
+            extensions={"contact_id": str(contact_id), "name": name, "field": "din"},
+        )
+
+
 class ExporterContactPrimaryConflictError(AnerBaseException):
     """Two writes made two different contacts primary for one company at once.
 

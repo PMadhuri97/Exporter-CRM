@@ -34,6 +34,7 @@ written only by ``ConversationService``; ``background_check`` (0015) only by
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -65,7 +66,14 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
+from app.modules.onboarding.domain.sealed_columns import (
+    PROFILE_CIN,
+    PROFILE_IEC,
+    PROFILE_PAN,
+    PROFILE_REGISTRATION_NUMBER,
+)
 from app.platform.database.models import AnerModel
+from app.platform.security.sealed_type import KEYED_SQL, SEALED_SQL
 
 if TYPE_CHECKING:
     pass
@@ -113,12 +121,16 @@ class ExporterProfile(AnerModel):
             "country IS NULL OR country ~ '^[A-Z]{2}$'",
             name="ck_exporter_profile_country_format",
         ),
+        # Each format check also accepts a sealed value's shape (0064): a regex cannot
+        # read a ciphertext, and `SealedString` only seals a well-formed identifier, so
+        # a malformed one still reaches the database plain and is refused here.
         CheckConstraint(
-            "pan IS NULL OR pan ~ '^[A-Z]{5}[0-9]{4}[A-Z]$'",
+            f"pan IS NULL OR pan ~ '^[A-Z]{{5}}[0-9]{{4}}[A-Z]$' OR pan ~ '{SEALED_SQL}'",
             name="ck_exporter_profile_pan_format",
         ),
         CheckConstraint(
-            "cin IS NULL OR cin ~ '^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$'",
+            "cin IS NULL OR cin ~ '^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$'"
+            f" OR cin ~ '{SEALED_SQL}'",
             name="ck_exporter_profile_cin_format",
         ),
         CheckConstraint(
@@ -175,7 +187,7 @@ class ExporterProfile(AnerModel):
         # (migration 0040). Every other identifier on this table has had its format
         # checked by the database since 0014; the IEC was the one that did not.
         CheckConstraint(
-            "iec IS NULL OR iec ~ '^[A-Z0-9]{10}$'",
+            f"iec IS NULL OR iec ~ '^[A-Z0-9]{{10}}$' OR iec ~ '{SEALED_SQL}'",
             name="ck_exporter_profile_iec_format",
         ),
         CheckConstraint(
@@ -189,6 +201,11 @@ class ExporterProfile(AnerModel):
         # (upper-cased, inner whitespace and punctuation stripped) so "KVK 1234-56" and
         # "kvk123456" collide, which is the whole point. Partial: most rows are NULL,
         # and two companies with no number are not duplicates.
+        #
+        # Two indexes, one rule (0065). A row written before sealing is compared as it
+        # always was; a sealed one holds `<seal of the key>|<seal of the value>` and is
+        # compared on the first half, which is the same for every spelling of one
+        # registration. `sealed_columns.registration_number_matches` looks up both.
         Index(
             "uq_exporter_profile_country_registration_number",
             "country",
@@ -196,6 +213,17 @@ class ExporterProfile(AnerModel):
             unique=True,
             postgresql_where=text(
                 "registration_number IS NOT NULL AND country IS NOT NULL"
+                f" AND registration_number !~ '{KEYED_SQL}'"
+            ),
+        ),
+        Index(
+            "uq_exporter_profile_country_registration_key",
+            "country",
+            text("split_part(registration_number, '|', 1)"),
+            unique=True,
+            postgresql_where=text(
+                "registration_number IS NOT NULL AND country IS NOT NULL"
+                f" AND registration_number ~ '{KEYED_SQL}'"
             ),
         ),
         # "Which companies did this deal's buyer become?" — the buyer migration's own
@@ -234,8 +262,10 @@ class ExporterProfile(AnerModel):
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     # ── India-specific identifiers (not covered by OnboardingRequest) ────────
-    pan: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    iec: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    #: **Encrypted** (AES-SIV, ``sealed_columns``) when written since 0064, as is `cin`;
+    #: older rows are plain. Both read back as the identifier, and `==` finds both.
+    pan: Mapped[str | None] = mapped_column(PROFILE_PAN, nullable=True)
+    iec: Mapped[str | None] = mapped_column(PROFILE_IEC, nullable=True)
 
     # ── Origin (immutable once set — see class docstring) ────────────────────
     source: Mapped[ExporterSource] = mapped_column(
@@ -285,7 +315,7 @@ class ExporterProfile(AnerModel):
     #: ISO 3166-1 alpha-2, upper case (`ck_exporter_profile_country_format`).
     country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     #: Company registration number (`ck_exporter_profile_cin_format`).
-    cin: Mapped[str | None] = mapped_column(String(21), nullable=True)
+    cin: Mapped[str | None] = mapped_column(PROFILE_CIN, nullable=True)
 
     #: The company's GST registrations, one row each (`ExporterGstin`), newest last.
     #: Loaded with the profile (`selectin`), so async code never lazy-loads it.
@@ -296,9 +326,13 @@ class ExporterProfile(AnerModel):
     #: that FK's `RESTRICT` or destroy the record. Dropping one is a *deactivation*
     #: (`active = false`), and `trg_exporter_gstin_no_delete` refuses a DELETE outright
     #: — including one the ORM would otherwise emit from this relationship.
+    #:
+    #: Ordered by `created_at` only: the GSTIN tie-break (registrations added together
+    #: share a `created_at`) is applied in Python by `gstins`, because the column holds
+    #: a ciphertext since 0064 and SQL would sort by that.
     gstin_rows: Mapped[list[ExporterGstin]] = relationship(
         lazy="selectin",
-        order_by="ExporterGstin.created_at, ExporterGstin.gstin",
+        order_by="ExporterGstin.created_at, ExporterGstin.id",
     )
 
     # ── Marker: commercial pause or ending, not a journey stage ─────────────
@@ -426,7 +460,12 @@ class ExporterProfile(AnerModel):
     #: the migration made, which may have nothing but a name and a country. Unique per
     #: country once normalised — a partial index, because most rows are `NULL`.
     #: Masked like CIN.
-    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    #: **Encrypted** since 0065 (``sealed_columns.PROFILE_REGISTRATION_NUMBER``): the
+    #: seal of its normalised key and the seal of the number as typed. Reads back as
+    #: typed; compare with ``registration_number_matches``, never ``==``.
+    registration_number: Mapped[str | None] = mapped_column(
+        PROFILE_REGISTRATION_NUMBER, nullable=True
+    )
 
     #: Whether this company is in the sales pipeline at all. `NOT NULL`
     #: with a server default, so every existing company reads `IN_PIPELINE` without a
@@ -471,8 +510,11 @@ class ExporterProfile(AnerModel):
         — the duplicate warning, the PAN/GSTIN consistency check, the responses —
         means "the GSTINs this company trades under now". `gstin_rows` is still every
         row, for the screen that shows the history.
+
+        Newest last, and alphabetical among registrations added together: the order
+        `gstin_rows` had when it sorted by the plain GSTIN in SQL.
         """
-        return [row.gstin for row in self.gstin_rows if row.active]
+        return [row.gstin for row in in_gstin_order(self.gstin_rows) if row.active]
 
     @property
     def flagged_branch_count(self) -> int:
@@ -481,4 +523,19 @@ class ExporterProfile(AnerModel):
         return sum(1 for row in self.gstin_rows if row.active and row.is_flagged)
 
 
-__all__ = ["ExporterProfile"]
+def in_gstin_order(rows: Sequence[ExporterGstin]) -> list[ExporterGstin]:
+    """``rows`` by ``created_at``, then by the plain GSTIN.
+
+    The order SQL gave them before the column was sealed. A row whose ``created_at`` is
+    not loaded — not flushed yet, or flushed and awaiting its server default — keeps
+    the order it was added in, as it always did. Read from ``__dict__`` so this never
+    triggers a load, which async code cannot do implicitly.
+    """
+    stamps = [row.__dict__.get("created_at") for row in rows]
+    if any(stamp is None for stamp in stamps):
+        return list(rows)
+    order = sorted(range(len(rows)), key=lambda i: (stamps[i], rows[i].gstin))
+    return [rows[i] for i in order]
+
+
+__all__ = ["ExporterProfile", "in_gstin_order"]

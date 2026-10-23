@@ -1,5 +1,6 @@
 import { refresh as refreshTokens } from './authApi';
 import { ApiError, parseErrorResponse } from './errors';
+import { hasTimedOut } from './sessionActivity';
 import {
   clearTokens,
   getAccessToken,
@@ -20,10 +21,14 @@ let refreshInFlight: Promise<void> | null = null;
 // itself expired/revoked) can force a logout without this module importing
 // the auth context back (which would be a platform -> app dependency
 // inversion) — a plain callback registration instead.
-let onRefreshFailed: (() => void) | null = null;
-export function registerRefreshFailureHandler(handler: () => void): void {
+// Called with why the session ended, when there is a reason worth showing on the
+// sign-in page (the server's "ended after inactivity", or this module's own).
+let onRefreshFailed: ((reason?: string) => void) | null = null;
+export function registerRefreshFailureHandler(handler: (reason?: string) => void): void {
   onRefreshFailed = handler;
 }
+
+export const IDLE_SIGN_OUT_MESSAGE = 'You were signed out after a period of inactivity.';
 
 // The refresh token lives in localStorage, shared by every tab, and the
 // backend rotates it on every use: a second exchange of the same token is
@@ -43,6 +48,14 @@ async function withRefreshLock(task: () => Promise<void>): Promise<void> {
 async function rotate(): Promise<void> {
   let token = getRefreshToken();
   if (token === null) throw new ApiError(401, 'Not signed in.');
+  // Nobody has used the CRM in this browser for the inactivity timeout: the session is
+  // over, whatever a background request wants. Not renewed, so the server ends it too
+  // (its refresh token lives one timeout), even for a tab whose timer never ran.
+  if (hasTimedOut()) {
+    clearTokens();
+    onRefreshFailed?.(IDLE_SIGN_OUT_MESSAGE);
+    throw new ApiError(401, IDLE_SIGN_OUT_MESSAGE);
+  }
   for (let attempt = 0; ; attempt += 1) {
     try {
       const result = await refreshTokens(token);
@@ -50,6 +63,7 @@ async function rotate(): Promise<void> {
         accessToken: result.access_token,
         refreshToken: result.refresh_token,
         expiresInSeconds: result.expires_in,
+        sessionIdleTimeoutSeconds: result.session_idle_timeout,
       });
       return;
     } catch (error) {
@@ -68,7 +82,7 @@ async function rotate(): Promise<void> {
       // one. Clearing a newer token would sign out the tab that stored it.
       if (stored === null || stored === token) {
         clearTokens();
-        onRefreshFailed?.();
+        onRefreshFailed?.(error.message);
       }
       throw error;
     }

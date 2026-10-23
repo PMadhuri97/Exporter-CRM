@@ -21,13 +21,33 @@ import hashlib
 import os
 from dataclasses import dataclass
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM, AESSIV
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from app.platform.configuration.config import get_settings
 from app.shared.exceptions import AnerBaseException
 
 _VERSION = "v1"
 _NONCE_BYTES = 12
+
+#: Marks a value sealed by :func:`encrypt_deterministic` rather than :func:`encrypt_field`.
+#:
+#: A separate marker, not a second ``v1``, because the two cannot be opened by the same
+#: call: GCM carries its nonce, SIV derives one. A stored value has to say which it is,
+#: or a column changing from one to the other becomes unreadable. No phone number or
+#: identifier can begin ``d1.``, so this never collides with a value that was never
+#: encrypted.
+_DETERMINISTIC_VERSION = "d1"
+
+#: Separates the SIV key from the GCM key derived from the same configured secret.
+#:
+#: One key must not drive two primitives. HKDF gives each its own, so the configured
+#: ``FIELD_ENCRYPTION_KEYS`` entry stays a single 32-byte secret and nothing else about
+#: key handling changes. 64 bytes because that is AES-SIV's 512-bit size, the one that
+#: matches AES-256 for strength; a 32-byte SIV key would quietly be AES-128.
+_SIV_INFO = b"aner-field-siv-v1"
+_SIV_KEY_BYTES = 64
 #: Where a missing key is tolerated, and a fixed development key stands in.
 DEV_KEY_ENVIRONMENTS = frozenset({"local", "test", "testing"})
 _DEV_KEY_ID = "dev"
@@ -126,11 +146,112 @@ def decrypt_field(stored: str, *, purpose: str) -> str:
         raise FieldDecryptionError(key_id) from exc
 
 
+def _siv_key(key: bytes) -> bytes:
+    return HKDF(
+        algorithm=hashes.SHA256(), length=_SIV_KEY_BYTES, salt=None, info=_SIV_INFO
+    ).derive(key)
+
+
+def encrypt_deterministic(plaintext: str, *, purpose: str) -> str:
+    """Encrypt ``plaintext`` so that the same input always gives the same output.
+
+    AES-SIV (RFC 5297), for a column the database still has to compare: a unique
+    constraint or an equality lookup needs identical values to store identically, which
+    :func:`encrypt_field` deliberately prevents by drawing a fresh nonce each time.
+
+    SIV derives its initialisation vector from the key, the plaintext and ``purpose``
+    instead of taking a random one, so identical inputs land identically while different
+    inputs never share a keystream. That is what makes it safe where a fixed nonce
+    would be catastrophic: with GCM, two values sealed under one nonce leak the XOR of
+    their plaintexts and the authentication subkey with them.
+
+    The price is the one determinism always costs: equal values are visibly equal in the
+    database. Anyone holding a dump learns which rows share a number without learning
+    any number. Use :func:`encrypt_field` wherever the column is never compared — it
+    gives up nothing in exchange for leaking nothing.
+
+    ``purpose`` is authenticated, not encrypted, exactly as in :func:`encrypt_field`.
+    """
+    keys = _keys()
+    sealed = AESSIV(_siv_key(keys.by_id[keys.current])).encrypt(
+        plaintext.encode("utf-8"), [purpose.encode("utf-8")]
+    )
+    body = base64.b64encode(sealed).decode("ascii")
+    return f"{_DETERMINISTIC_VERSION}.{keys.current}.{body}"
+
+
+def decrypt_deterministic(stored: str, *, purpose: str) -> str:
+    """Decrypt a value :func:`encrypt_deterministic` wrote for the same ``purpose``."""
+    version, _, rest = stored.partition(".")
+    key_id, _, body = rest.partition(".")
+    if version != _DETERMINISTIC_VERSION or not key_id or not body:
+        raise FieldDecryptionError(key_id or "?")
+    keys = _keys()
+    key = keys.by_id.get(key_id)
+    if key is None:
+        raise FieldDecryptionError(key_id)
+    try:
+        raw = base64.b64decode(body, validate=True)
+        plain = AESSIV(_siv_key(key)).decrypt(raw, [purpose.encode("utf-8")])
+        return plain.decode("utf-8")
+    except Exception as exc:  # a damaged value: bad base64, InvalidTag, not UTF-8
+        raise FieldDecryptionError(key_id) from exc
+
+
+def is_random_ciphertext(value: str | None) -> bool:
+    """Whether ``value`` was written by :func:`encrypt_field`.
+
+    The counterpart of :func:`is_deterministic_ciphertext`, for a column sealed with a
+    random nonce: it lets a read path tell a sealed value from one written before the
+    column was sealed, and stops a re-save sealing a ciphertext a second time.
+    """
+    return bool(value) and value.startswith(f"{_VERSION}.")
+
+
+def is_deterministic_ciphertext(value: str | None) -> bool:
+    """Whether ``value`` was written by :func:`encrypt_deterministic`.
+
+    What lets a column hold both the converted and the not-yet-converted during a
+    migration, and what a read path uses to tell a sealed value from one typed in before
+    the column was encrypted.
+    """
+    return bool(value) and value.startswith(f"{_DETERMINISTIC_VERSION}.")
+
+
+def deterministic_seals(plaintext: str, *, purpose: str) -> list[str]:
+    """``plaintext`` sealed by :func:`encrypt_deterministic` under **every** configured
+    key, the current one first.
+
+    What an equality lookup compares against. The seal carries its key id, so the same
+    value sealed before and after a key rotation is two different strings; a lookup that
+    tried only the current key would stop finding every row written under the old one
+    until they were all re-sealed.
+    """
+    keys = _keys()
+    seals = []
+    for key_id, key in keys.by_id.items():
+        sealed = AESSIV(_siv_key(key)).encrypt(
+            plaintext.encode("utf-8"), [purpose.encode("utf-8")]
+        )
+        seals.append(
+            f"{_DETERMINISTIC_VERSION}.{key_id}.{base64.b64encode(sealed).decode('ascii')}"
+        )
+    # `by_id` keeps configuration order and the current key is the first configured,
+    # so this is already current-first; stated rather than assumed.
+    seals.sort(key=lambda seal: seal.split(".", 2)[1] != keys.current)
+    return seals
+
+
 __all__ = [
     "DEV_KEY_ENVIRONMENTS",
     "FieldDecryptionError",
     "FieldEncryptionUnavailableError",
     "check_field_encryption_keys",
+    "decrypt_deterministic",
     "decrypt_field",
+    "deterministic_seals",
+    "encrypt_deterministic",
     "encrypt_field",
+    "is_deterministic_ciphertext",
+    "is_random_ciphertext",
 ]
