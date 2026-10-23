@@ -108,12 +108,15 @@ export function useCanRevealIdentifiers(): boolean {
  * late-loading permissions are waited for rather than guessed at.
  *
  * Returns `false` while the answer is still unknown — masked until told otherwise, in
- * keeping with every other reveal decision.
+ * keeping with every other reveal decision. When the permissions are already loaded,
+ * the answer is there on the **first** render: settled in an effect instead, every form
+ * opened `false` and switched to `true` a render later, initialised its email and phone
+ * empty, and saved that emptiness as a clear.
  */
 export function useCanRevealIdentifiersOnce(): boolean {
   const { isLoading, granted } = usePermissions();
   const answer = granted.has('exporters:view_full_tax_id');
-  const [settled, setSettled] = useState<boolean | null>(null);
+  const [settled, setSettled] = useState<boolean | null>(() => (isLoading ? null : answer));
 
   useEffect(() => {
     if (!isLoading && settled === null) setSettled(answer);

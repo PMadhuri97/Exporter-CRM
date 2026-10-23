@@ -12,7 +12,7 @@
  * company's screening on "never screened" for that person.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -320,6 +320,20 @@ function EditPersonForm({
     identification_type: (person.identification_type as IdentificationType | null) ?? '',
     identification_number: masked(person.identification_number),
   });
+  // As in `EditContactForm`: permissions that land after the form opened switch it to
+  // revealed with the masked boxes still empty, and a save would clear them. On that
+  // switch, and only then, each empty box takes the real value.
+  const revealedAtOpen = useRef(mayReveal);
+  useEffect(() => {
+    if (!mayReveal || revealedAtOpen.current) return;
+    revealedAtOpen.current = true;
+    setForm((prev) => ({
+      ...prev,
+      din: prev.din || (person.din ?? ''),
+      date_of_birth: prev.date_of_birth || (person.date_of_birth ?? ''),
+      identification_number: prev.identification_number || (person.identification_number ?? ''),
+    }));
+  }, [mayReveal, person.din, person.date_of_birth, person.identification_number]);
   // A masked number left empty is "unchanged", so a type alone is fine then.
   const blocked = problem(form, mayReveal);
 

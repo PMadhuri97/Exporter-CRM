@@ -132,6 +132,46 @@ describe('Editing a contact', () => {
     );
   });
 
+  it('keeps the email when only the phone is changed', async () => {
+    as('COMPLIANCE');
+    renderCards(JANE);
+    openEdit();
+
+    expect(screen.getByLabelText('Email')).toHaveValue(JANE.email);
+    expect(screen.getByLabelText('Phone')).toHaveValue(JANE.phone);
+    change('Phone', '+919800000000');
+    save();
+
+    await waitFor(() =>
+      expect(updateExporterContact).toHaveBeenCalledWith(CUSTOMER_ID, JANE.id, {
+        phone: '+919800000000',
+      }),
+    );
+  });
+
+  it('fills email and phone when the permission lands after the form opened', async () => {
+    // The form's first render is told "masked", the next ones "may reveal": the
+    // permissions were still loading when Edit was clicked.
+    as('COMPLIANCE');
+    vi.mocked(useCanRevealIdentifiersOnce).mockReturnValueOnce(false);
+    renderCards(JANE);
+    openEdit();
+
+    // The reported case: only the phone is edited. Typing re-renders the form, which
+    // now hears "may reveal" — the email box must take the real address, not stay
+    // empty to be saved as a clear.
+    change('Phone', '+919800000000');
+    await waitFor(() => expect(screen.getByLabelText('Email')).toHaveValue(JANE.email));
+    expect(screen.getByLabelText('Phone')).toHaveValue('+919800000000');
+    save();
+
+    await waitFor(() =>
+      expect(updateExporterContact).toHaveBeenCalledWith(CUSTOMER_ID, JANE.id, {
+        phone: '+919800000000',
+      }),
+    );
+  });
+
   it('clears a field that was emptied, as null', async () => {
     as('COMPLIANCE');
     renderCards(JANE);
